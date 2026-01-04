@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:confetti/confetti.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert'; // 用来把 JSON 转成对象
 
 // 组件引用
 import 'widgets/shake_widget.dart';
@@ -368,6 +369,44 @@ class _MainScreenState extends State<MainScreen>
     );
   }
 
+  // [修改] 测试双向通信
+  Future<void> _testBackendConnection() async {
+    final url = Uri.parse('http://10.0.2.2:8080/tasks');
+
+    try {
+      // 1. 先尝试发送一个新任务 (POST)
+      print("📤 正在上传任务...");
+
+      // 创建一个测试任务
+      final newTask = Task(
+        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title: "来自 Flutter 的问候",
+        deadline: DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+      );
+
+      final postResponse = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"}, // 必须告诉服务器如果你发的是JSON
+        body: jsonEncode(newTask.toJson()), // 把对象转成 JSON 字符串
+      );
+
+      if (postResponse.statusCode == 200) {
+        print("✅ 上传成功！服务器回复：${utf8.decode(postResponse.bodyBytes)}");
+      } else {
+        print("❌ 上传失败: ${postResponse.statusCode}");
+      }
+
+      // 2. 再获取列表，看看有没有刚才发过去的 (GET)
+      print("📥 正在刷新列表...");
+      final getResponse = await http.get(url);
+      if (getResponse.statusCode == 200) {
+        print("✅ 刷新成功！最新列表：${utf8.decode(getResponse.bodyBytes)}");
+      }
+    } catch (e) {
+      print("💥 错误: $e");
+    }
+  }
+
   // [修改] 删除任务逻辑：增加确认弹窗
   void _deleteTask(Task task) {
     showDialog(
@@ -666,6 +705,11 @@ class _MainScreenState extends State<MainScreen>
         title: Text(_selectedIndex == 0 ? '任务战场' : '补给商店'),
         actions: _selectedIndex == 0
             ? [
+                IconButton(
+                  icon: const Icon(Icons.cloud_sync_rounded), // 云同步图标
+                  tooltip: "测试后端连接",
+                  onPressed: _testBackendConnection,
+                ),
                 IconButton(
                   tooltip: "开发调试：重置等级",
                   icon: const Icon(Icons.restart_alt_rounded),

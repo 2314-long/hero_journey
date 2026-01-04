@@ -41,4 +41,13 @@ class Task {
       (json.decode(tasksJson) as List<dynamic>)
           .map((e) => Task.fromMap(e))
           .toList();
+  // 在 Task 类里面添加这个方法
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'is_done': isDone, // 注意：这里要和 Go 的 json tag 对应 (is_done)
+      'deadline': deadline,
+    };
+  }
 }
