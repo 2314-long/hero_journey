@@ -88,7 +88,7 @@ lib/
     ├── shake_widget.dart    # 屏幕震动组件
     └── game_dialogs.dart    # 游戏相关弹窗 (升级/复活/GameOver)
 
-
+```
 ---
 
 ## 🔮 未来计划 (Future Plans)
