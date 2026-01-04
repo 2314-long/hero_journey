@@ -4,7 +4,6 @@
 
 ### 📄 `README.md`
 
-```markdown
 # ⚔️ Hero Journey (英雄之旅)
 
 > **把你的生活变成一场英雄冒险！** > Turn your life into a hero's adventure!
@@ -15,9 +14,9 @@
 
 ## 📸 预览 (Preview)
 
-| 🏠 任务战场 | 🛍️ 补给商店 | ⚔️ 侧滑操作 |
+| 🏠 任务战场 | 🛍️ 补给商店 | |
 |:---:|:---:|:---:|
-| <img src="assets/screenshots/home.png" width="200"/> | <img src="assets/screenshots/shop.png" width="200"/> | <img src="assets/screenshots/swipe.png" width="200"/> |
+| <img src="assets/screenshots/home.png" width="200"/> | <img src="assets/screenshots/shop.png" width="200"/> | |
 
 ---
 
@@ -89,7 +88,6 @@ lib/
     ├── shake_widget.dart    # 屏幕震动组件
     └── game_dialogs.dart    # 游戏相关弹窗 (升级/复活/GameOver)
 
-```
 
 ---
 
