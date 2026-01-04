@@ -34,6 +34,17 @@ class Task {
       punished: map['punished'] ?? false,
     );
   }
+  // [新增] 从 JSON 数据变成 Task 对象 (服务端 -> App)
+  factory Task.fromJson(Map<String, dynamic> json) {
+    return Task(
+      id: json['id'],
+      title: json['title'],
+      isDone: json['is_done'] ?? false,
+      deadline: json['deadline'],
+      // 注意：目前 Go 后端还没有存 punished 字段，这里先给默认值 false
+      punished: false,
+    );
+  }
 
   static String encode(List<Task> tasks) =>
       json.encode(tasks.map((e) => e.toMap()).toList());

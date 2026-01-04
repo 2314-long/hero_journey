@@ -18,6 +18,7 @@ import 'models/task.dart';
 import 'services/notification_service.dart';
 import 'services/audio_service.dart';
 import 'services/storage_service.dart';
+import 'services/api_service.dart'; // [新增]
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -168,8 +169,14 @@ class _MainScreenState extends State<MainScreen>
     );
   }
 
-  void _loadData() {
+  // [修改] 加载数据
+  void _loadData() async {
+    // 1. 先加载本地的基础数据 (金币、等级等)
     final data = StorageService().loadData();
+
+    // 2. 尝试从后端获取任务
+    final apiTasks = await ApiService().fetchTasks();
+
     setState(() {
       currentHp = data['hp'];
       maxHp = data['maxHp'];
@@ -177,7 +184,16 @@ class _MainScreenState extends State<MainScreen>
       level = data['level'];
       currentXp = data['currentXp'];
       hasResurrectionCross = data['hasResurrectionCross'];
-      tasks = data['tasks'];
+
+      // 核心逻辑：如果后端有数据，就用后端的；否则用本地缓存的
+      // (这样如果你没开服务器，至少还能看到旧数据，不会报错)
+      if (apiTasks.isNotEmpty) {
+        tasks = apiTasks;
+        print("✅ 已从服务器加载 ${tasks.length} 个任务");
+      } else {
+        tasks = data['tasks'];
+        print("⚠️ 服务器未连接，使用本地缓存");
+      }
     });
   }
 
@@ -271,7 +287,7 @@ class _MainScreenState extends State<MainScreen>
     );
   }
 
-  void toggleTask(Task task) {
+  void toggleTask(Task task) async {
     if (_isOverdue(task.deadline)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -301,6 +317,7 @@ class _MainScreenState extends State<MainScreen>
         if (currentXp < 0) currentXp = 0;
       }
     });
+    await ApiService().updateTask(task);
     _saveData();
   }
 
@@ -343,17 +360,42 @@ class _MainScreenState extends State<MainScreen>
       context: context,
       builder: (context) {
         return AddTaskDialog(
-          onSubmit: (title, deadline) {
+          onSubmit: (title, deadline) async {
+            // 变成 async
             int taskId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+            final newTask = Task(
+              id: taskId,
+              title: title,
+              deadline: deadline?.toIso8601String(),
+            );
+
+            // 1. 先乐观更新 (直接显示在界面上，不用等服务器，体验更好)
             setState(() {
-              tasks.add(
-                Task(
-                  id: taskId,
-                  title: title,
-                  deadline: deadline?.toIso8601String(),
+              tasks.add(newTask);
+            });
+
+            // 2. 悄悄发送给服务器
+            final success = await ApiService().createTask(newTask);
+
+            if (success) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("☁️ 已同步到云端"),
+                  duration: Duration(seconds: 1),
                 ),
               );
-            });
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("⚠️ 同步失败，仅保存到本地"),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+
+            // 3. 别忘了还要存一份本地，防止下次没网
+            _saveData();
 
             if (deadline != null) {
               NotificationService().scheduleNotification(
@@ -362,7 +404,6 @@ class _MainScreenState extends State<MainScreen>
                 deadline,
               );
             }
-            _saveData();
           },
         );
       },
@@ -424,13 +465,16 @@ class _MainScreenState extends State<MainScreen>
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context); // 关掉确认框
-              // 执行真正的删除
+              // 1. UI 先删除 (乐观更新)
+              setState(() => tasks.remove(task));
+
+              // 2. 告诉服务器删除
               if (task.id != null) {
                 NotificationService().cancelNotification(task.id!);
+                await ApiService().deleteTask(task.id!); // 👈 这一行
               }
-              setState(() => tasks.remove(task));
               _saveData();
             },
             child: const Text("删除"),
