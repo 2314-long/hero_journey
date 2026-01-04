@@ -1,10 +1,8 @@
-这是一个非常棒的想法！一个好的 `README.md` 是开源项目的门面，能让别人（或者未来的你自己）一眼看懂这个项目是做什么的、用了什么技术、以及长什么样。
 
-结合我们这一路开发的功能，我为你写了一份非常专业的 `README.md`。你可以直接在项目根目录下创建一个名为 `README.md` 的文件，然后把下面的内容复制进去。
 
 ---
 
-### 📄 `README.md` (复制以下内容)
+### 📄 `README.md`
 
 ```markdown
 # ⚔️ Hero Journey (英雄之旅)
@@ -20,8 +18,6 @@
 | 🏠 任务战场 | 🛍️ 补给商店 | ⚔️ 侧滑操作 |
 |:---:|:---:|:---:|
 | <img src="assets/screenshots/home.png" width="200"/> | <img src="assets/screenshots/shop.png" width="200"/> | <img src="assets/screenshots/swipe.png" width="200"/> |
-
-*(注：请将你的应用截图放入 `assets/screenshots/` 文件夹中，或直接替换上面的图片链接)*
 
 ---
 
@@ -97,47 +93,6 @@ lib/
 
 ---
 
-## 🚀 快速开始 (Getting Started)
-
-### 1. 环境准备
-
-确保你已安装 Flutter SDK 和 Android Studio/VS Code。
-
-### 2. 获取代码
-
-```bash
-git clone [https://github.com/yourusername/hero_journey.git](https://github.com/yourusername/hero_journey.git)
-cd hero_journey
-
-```
-
-### 3. 安装依赖
-
-```bash
-flutter pub get
-
-```
-
-### 4. 运行项目
-
-连接手机或启动模拟器：
-
-```bash
-flutter run
-
-```
-
-### 5. 生成图标 (可选)
-
-如果你更换了图标文件：
-
-```bash
-dart run flutter_launcher_icons
-
-```
-
----
-
 ## 🔮 未来计划 (Future Plans)
 
 * [ ] **每日循环任务**：支持设置每日打卡习惯。
@@ -151,18 +106,7 @@ dart run flutter_launcher_icons
 
 感谢所有为这个项目提供灵感的 RPG 游戏！
 
-Created with ❤️ by [你的名字]
-
-```
+Created with ❤️ by [songlongs
 
 ---
 
-### 💡 如何使用这个文件
-
-1.  在 VS Code 中，在项目最外层（和 `pubspec.yaml` 同级）新建一个文件，命名为 **`README.md`**。
-2.  将上面的代码复制进去。
-3.  **可选**：如果你想让文档里的图片显示出来，可以在项目里建一个 `assets/screenshots/` 文件夹，把你刚才发的几张截图放进去，并重命名为 `home.png` (主页), `shop.png` (商店), `swipe.png` (侧滑)。
-
-这样，你的项目就像一个正经的开源软件一样专业了！
-
-```
