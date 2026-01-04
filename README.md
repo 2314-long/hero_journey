@@ -14,9 +14,9 @@
 
 ## 📸 预览 (Preview)
 
-| 🏠 任务战场 | 🛍️ 补给商店 | |
-|:---:|:---:|:---:|
-| <img src="assets/screenshots/home.png" width="200"/> | <img src="assets/screenshots/shop.png" width="200"/> | |
+| 🏠 任务战场 | 🛍️ 补给商店 | 
+|:---:|:---:|
+| <img src="assets/screenshots/home.png" width="200"/> | <img src="assets/screenshots/shop.png" width="200"/> |
 
 ---
 
@@ -104,7 +104,7 @@ lib/
 
 感谢所有为这个项目提供灵感的 RPG 游戏！
 
-Created with ❤️ by [songlongs
+Created with ❤️ by [songlong]
 
 ---
 
