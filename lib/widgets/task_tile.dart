@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_slidable/flutter_slidable.dart'; // [新增] 引入侧滑库
+import 'package:flutter_slidable/flutter_slidable.dart';
 import '../models/task.dart';
 
 class TaskTile extends StatelessWidget {
   final Task task;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
-  final VoidCallback onEdit; // [新增] 编辑回调
+  final VoidCallback onEdit;
 
   const TaskTile({
     super.key,
@@ -17,21 +17,31 @@ class TaskTile extends StatelessWidget {
     required this.onEdit,
   });
 
+  // 🚀 [修复 1] 增加空字符串检查 + try-catch
   bool _isOverdue(String? dateStr) {
-    if (dateStr == null) return false;
-    return DateTime.now().isAfter(DateTime.parse(dateStr));
+    if (dateStr == null || dateStr.isEmpty) return false; // 同时检查 null 和 ""
+    try {
+      return DateTime.now().isAfter(DateTime.parse(dateStr));
+    } catch (e) {
+      return false; // 解析失败不算过期
+    }
   }
 
+  // 🚀 [修复 2] 增加空字符串检查 + try-catch
   String _formatDate(String? dateStr) {
-    if (dateStr == null) return "";
-    final date = DateTime.parse(dateStr);
-    final now = DateTime.now();
-    if (date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day) {
-      return '今天 ${DateFormat('HH:mm').format(date)}';
+    if (dateStr == null || dateStr.isEmpty) return ""; // 没日期就不显示
+    try {
+      final date = DateTime.parse(dateStr);
+      final now = DateTime.now();
+      if (date.year == now.year &&
+          date.month == now.month &&
+          date.day == now.day) {
+        return '今天 ${DateFormat('HH:mm').format(date)}';
+      }
+      return DateFormat('MM月dd日 HH:mm').format(date);
+    } catch (e) {
+      return ""; // 解析出错就不显示
     }
-    return DateFormat('MM月dd日 HH:mm').format(date);
   }
 
   @override
@@ -39,19 +49,15 @@ class TaskTile extends StatelessWidget {
     bool isOverdue = !task.isDone && _isOverdue(task.deadline);
     final colorScheme = Theme.of(context).colorScheme;
 
-    // [修改] 使用 Padding + Slidable + Card 的组合
-    // 这样滑动的 Action 才能和 Card 高度一致，且不遮挡 Margin
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Slidable(
-        // key 用于列表复用优化
         key: ValueKey(task.id),
 
-        // [核心] 右侧侧滑菜单 (从右往左滑)
+        // 右侧侧滑菜单
         endActionPane: ActionPane(
-          motion: const ScrollMotion(), // 滑动效果：平滑滚动
+          motion: const ScrollMotion(),
           children: [
-            // 编辑按钮 (蓝色)
             SlidableAction(
               onPressed: (context) => onEdit(),
               backgroundColor: Colors.blue.shade100,
@@ -62,7 +68,6 @@ class TaskTile extends StatelessWidget {
                 left: Radius.circular(16),
               ),
             ),
-            // 删除按钮 (红色)
             SlidableAction(
               onPressed: (context) => onDelete(),
               backgroundColor: Colors.red.shade100,
@@ -76,11 +81,10 @@ class TaskTile extends StatelessWidget {
           ],
         ),
 
-        // 这里的 Card 必须去掉 margin，因为 margin 已经由外层的 Padding 提供了
         child: Card(
           elevation: task.isDone ? 0.5 : 2,
           color: task.isDone ? Colors.grey.shade50 : colorScheme.surface,
-          margin: EdgeInsets.zero, // [注意] 设为0，否则滑动时会有缝隙
+          margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: isOverdue && !task.isDone
@@ -134,7 +138,9 @@ class TaskTile extends StatelessWidget {
                                       : Colors.black87),
                           ),
                         ),
-                        if (task.deadline != null) ...[
+                        // 🚀 [修复 3] 显示日期前的检查
+                        if (task.deadline != null &&
+                            task.deadline!.isNotEmpty) ...[
                           const SizedBox(height: 6),
                           Row(
                             children: [
