@@ -3,10 +3,11 @@ import 'package:intl/intl.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import '../models/task.dart';
 
-class TaskTile extends StatelessWidget {
+class TaskTile extends StatefulWidget {
   final Task task;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
+  final Future<bool> Function() onConfirmDelete; // [必须] 这是一个返回 Future<bool> 的函数
   final VoidCallback onEdit;
 
   const TaskTile({
@@ -14,22 +15,49 @@ class TaskTile extends StatelessWidget {
     required this.task,
     required this.onToggle,
     required this.onDelete,
+    required this.onConfirmDelete,
     required this.onEdit,
   });
 
-  // 🚀 [修复 1] 增加空字符串检查 + try-catch
-  bool _isOverdue(String? dateStr) {
-    if (dateStr == null || dateStr.isEmpty) return false; // 同时检查 null 和 ""
-    try {
-      return DateTime.now().isAfter(DateTime.parse(dateStr));
-    } catch (e) {
-      return false; // 解析失败不算过期
+  @override
+  State<TaskTile> createState() => _TaskTileState();
+}
+
+class _TaskTileState extends State<TaskTile> {
+  late bool _localIsDone;
+
+  @override
+  void initState() {
+    super.initState();
+    _localIsDone = widget.task.isDone;
+  }
+
+  @override
+  void didUpdateWidget(covariant TaskTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.task.isDone != widget.task.isDone) {
+      _localIsDone = widget.task.isDone;
     }
   }
 
-  // 🚀 [修复 2] 增加空字符串检查 + try-catch
+  void _handleTap() async {
+    if (_localIsDone != widget.task.isDone) return;
+    setState(() => _localIsDone = !_localIsDone);
+    await Future.delayed(const Duration(milliseconds: 500));
+    widget.onToggle();
+  }
+
+  bool _isOverdue(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return false;
+    try {
+      return DateTime.now().isAfter(DateTime.parse(dateStr));
+    } catch (e) {
+      return false;
+    }
+  }
+
   String _formatDate(String? dateStr) {
-    if (dateStr == null || dateStr.isEmpty) return ""; // 没日期就不显示
+    if (dateStr == null || dateStr.isEmpty) return "";
     try {
       final date = DateTime.parse(dateStr);
       final now = DateTime.now();
@@ -40,26 +68,33 @@ class TaskTile extends StatelessWidget {
       }
       return DateFormat('MM月dd日 HH:mm').format(date);
     } catch (e) {
-      return ""; // 解析出错就不显示
+      return "";
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    bool isOverdue = !task.isDone && _isOverdue(task.deadline);
+    bool isOverdue = !_localIsDone && _isOverdue(widget.task.deadline);
     final colorScheme = Theme.of(context).colorScheme;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Slidable(
-        key: ValueKey(task.id),
+        key: ValueKey(widget.task.id),
 
-        // 右侧侧滑菜单
+        // --- 核心修复区域 ---
         endActionPane: ActionPane(
-          motion: const ScrollMotion(),
+          motion: const DrawerMotion(),
+          dismissible: DismissiblePane(
+            onDismissed: () => widget.onDelete(), // 只有 confirm 返回 true 后，才会执行这里
+            // 🔥 [关键] 必须实现这个！它会暂停动画，等待弹窗结果
+            confirmDismiss: () async {
+              return await widget.onConfirmDelete();
+            },
+          ),
           children: [
             SlidableAction(
-              onPressed: (context) => onEdit(),
+              onPressed: (context) => widget.onEdit(),
               backgroundColor: Colors.blue.shade100,
               foregroundColor: Colors.blue.shade700,
               icon: Icons.edit_rounded,
@@ -69,7 +104,13 @@ class TaskTile extends StatelessWidget {
               ),
             ),
             SlidableAction(
-              onPressed: (context) => onDelete(),
+              onPressed: (context) async {
+                // 按钮点击也要走确认流程
+                final confirm = await widget.onConfirmDelete();
+                if (confirm) {
+                  widget.onDelete(); // 如果确认，再执行删除
+                }
+              },
               backgroundColor: Colors.red.shade100,
               foregroundColor: Colors.red,
               icon: Icons.delete_rounded,
@@ -81,66 +122,67 @@ class TaskTile extends StatelessWidget {
           ],
         ),
 
-        child: Card(
-          elevation: task.isDone ? 0.5 : 2,
-          color: task.isDone ? Colors.grey.shade50 : colorScheme.surface,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
+        // --- 核心修复结束 ---
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          decoration: BoxDecoration(
+            color: _localIsDone ? Colors.grey.shade50 : colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
-            side: isOverdue && !task.isDone
-                ? BorderSide(
+            border: isOverdue && !_localIsDone
+                ? Border.all(
                     color: colorScheme.error.withValues(alpha: 0.5),
                     width: 1.5,
                   )
-                : BorderSide.none,
+                : Border.all(color: Colors.transparent, width: 0),
+            boxShadow: _localIsDone
+                ? []
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            onTap: isOverdue ? null : onToggle,
+            onTap: isOverdue ? null : _handleTap,
             child: Padding(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: [
-                  Transform.scale(
-                    scale: 1.2,
-                    child: Checkbox(
-                      value: task.isDone,
-                      onChanged: isOverdue ? null : (val) => onToggle(),
-                      activeColor: colorScheme.primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      side: BorderSide(
-                        color: isOverdue ? Colors.grey : colorScheme.primary,
-                        width: 2,
-                      ),
-                    ),
+                  _AnimatedCheckbox(
+                    isChecked: _localIsDone,
+                    color: isOverdue ? Colors.grey : colorScheme.primary,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          task.title,
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
                           style: TextStyle(
                             fontSize: 16,
-                            fontWeight: task.isDone
+                            fontWeight: _localIsDone
                                 ? FontWeight.normal
                                 : FontWeight.w600,
-                            decoration: task.isDone
+                            decoration: _localIsDone
                                 ? TextDecoration.lineThrough
-                                : null,
-                            color: task.isDone
+                                : TextDecoration.none,
+                            decorationColor: Colors.grey.shade400,
+                            color: _localIsDone
                                 ? Colors.grey.shade400
                                 : (isOverdue
                                       ? Colors.grey.shade700
                                       : Colors.black87),
                           ),
+                          child: Text(widget.task.title),
                         ),
-                        // 🚀 [修复 3] 显示日期前的检查
-                        if (task.deadline != null &&
-                            task.deadline!.isNotEmpty) ...[
+                        if (widget.task.deadline != null &&
+                            widget.task.deadline!.isNotEmpty) ...[
                           const SizedBox(height: 6),
                           Row(
                             children: [
@@ -155,7 +197,7 @@ class TaskTile extends StatelessWidget {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                "${_formatDate(task.deadline)} ${isOverdue ? (task.punished ? '(已惩罚)' : '(已过期)') : ''}",
+                                "${_formatDate(widget.task.deadline)} ${isOverdue ? (widget.task.punished ? '(已惩罚)' : '(已过期)') : ''}",
                                 style: TextStyle(
                                   color: isOverdue
                                       ? colorScheme.error
@@ -178,6 +220,32 @@ class TaskTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AnimatedCheckbox extends StatelessWidget {
+  final bool isChecked;
+  final Color color;
+  const _AnimatedCheckbox({required this.isChecked, required this.color});
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.elasticOut,
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        color: isChecked ? color : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isChecked ? color : Colors.grey.shade400,
+          width: 2,
+        ),
+      ),
+      child: isChecked
+          ? const Icon(Icons.check, size: 16, color: Colors.white)
+          : null,
     );
   }
 }

@@ -6,7 +6,7 @@ import 'package:confetti/confetti.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-// 引入组件 (注意路径变成了 ../)
+// 引入组件
 import '../widgets/shake_widget.dart';
 import '../widgets/game_dialogs.dart';
 import '../widgets/add_task_dialog.dart';
@@ -28,6 +28,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen>
     with SingleTickerProviderStateMixin {
+  // 状态变量
   int currentHp = 100;
   int maxHp = 100;
   int gold = 0;
@@ -39,12 +40,15 @@ class _MainScreenState extends State<MainScreen>
 
   List<Task> tasks = [];
 
+  // 控制器
   Timer? _timer;
   int _selectedIndex = 0;
-
   late ConfettiController _controllerLeft;
   late ConfettiController _controllerRight;
   late AnimationController _shakeController;
+
+  // 🚀 [修复核心] 防止死亡弹窗无限触发的标记
+  bool _isGameOverProcessing = false;
 
   @override
   void initState() {
@@ -65,10 +69,18 @@ class _MainScreenState extends State<MainScreen>
       }
     });
 
+    // 🚀 [修复 1] 启动定时器逻辑封装
+    _startTimer();
+  }
+
+  // 🚀 [修复 2] 优化的定时器启动方法
+  void _startTimer() {
+    _timer?.cancel(); // 防止重复启动
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
+        // ❌ 绝对不要在这里直接写 setState(() {})
+        // 只有逻辑判断需要更新时，才在内部调用 setState
         _checkOverdueAndPunish();
-        setState(() {});
       }
     });
   }
@@ -92,14 +104,15 @@ class _MainScreenState extends State<MainScreen>
       hasCross: hasResurrectionCross,
       tasks: tasks,
     );
-    // 顺便同步云端属性
     ApiService().syncStats(level, gold, currentXp, currentHp, maxHp);
   }
 
   void _loadData() async {
     final data = StorageService().loadData();
     final apiTasks = await ApiService().fetchTasks();
-    final apiStats = await ApiService().fetchStats(); // 同步属性
+    final apiStats = await ApiService().fetchStats();
+
+    if (!mounted) return;
 
     setState(() {
       if (apiStats != null) {
@@ -147,7 +160,13 @@ class _MainScreenState extends State<MainScreen>
     }
   }
 
+  // 🚀 [修复 3] 修复无限弹窗和过度渲染的核心逻辑
   void _checkOverdueAndPunish() {
+    // 如果正在处理游戏结束，或者已经挂了且没复活甲，就停止计算，防止无限弹窗
+    if (_isGameOverProcessing || (currentHp <= 0 && !hasResurrectionCross)) {
+      return;
+    }
+
     bool hasChanged = false;
     bool tookDamage = false;
 
@@ -163,8 +182,11 @@ class _MainScreenState extends State<MainScreen>
       }
     }
 
+    // 只有数据真正改变时，才刷新界面
     if (hasChanged) {
       _saveData();
+      setState(() {}); // ✅ 只有这里才调用 setState
+
       if (tookDamage) {
         AudioService().playDamage();
         HapticFeedback.heavyImpact();
@@ -178,30 +200,42 @@ class _MainScreenState extends State<MainScreen>
           ),
         );
       }
+
+      // 死亡逻辑
       if (currentHp <= 0) {
         if (hasResurrectionCross) {
           _triggerResurrection();
         } else {
-          showDialog(
-            barrierDismissible: false,
-            context: context,
-            builder: (context) => GameOverDialog(
-              onRestart: () {
-                setState(() {
-                  currentHp = 100;
-                  maxHp = 100;
-                  gold = 0;
-                  level = 1;
-                  currentXp = 0;
-                  hasResurrectionCross = false;
-                });
-                _saveData();
-              },
-            ),
-          );
+          _handleGameOver(); // 抽取出来的死亡处理逻辑
         }
       }
     }
+  }
+
+  void _handleGameOver() {
+    _timer?.cancel(); // 🛑 立即停止定时器
+    _isGameOverProcessing = true; // 🔒 锁定状态
+
+    showDialog(
+      barrierDismissible: false,
+      context: context,
+      builder: (context) => GameOverDialog(
+        onRestart: () {
+          // 重置游戏数据
+          setState(() {
+            currentHp = 100;
+            maxHp = 100;
+            gold = 0;
+            level = 1;
+            currentXp = 0;
+            hasResurrectionCross = false;
+            _isGameOverProcessing = false; // 🔓 解锁状态
+          });
+          _saveData();
+          _startTimer(); // ▶️ 重新启动定时器
+        },
+      ),
+    );
   }
 
   void _triggerResurrection() {
@@ -228,14 +262,16 @@ class _MainScreenState extends State<MainScreen>
       return;
     }
 
+    if (!task.isDone) {
+      AudioService().playSuccess();
+    }
+
     setState(() {
       task.isDone = !task.isDone;
 
       if (task.isDone) {
-        AudioService().playSuccess();
         gold += 10;
-        int xpGain = 50;
-        currentXp += xpGain;
+        currentXp += 50;
         _checkLevelUp();
         if (task.id != null) {
           NotificationService().cancelNotification(task.id!);
@@ -251,14 +287,12 @@ class _MainScreenState extends State<MainScreen>
     _saveData();
   }
 
-  // 编辑任务逻辑
   void _editTask(Task task) {
     showDialog(
       context: context,
       builder: (context) {
         return AddTaskDialog(
           initialTitle: task.title,
-          // 🚀 [修复 1] 只有当 deadline 不为 null 且 不为空字符串 时才解析
           initialDeadline: (task.deadline == null || task.deadline!.isEmpty)
               ? null
               : DateTime.parse(task.deadline!),
@@ -306,7 +340,7 @@ class _MainScreenState extends State<MainScreen>
               deadline?.toIso8601String(),
             );
 
-            if (success) {
+            if (success && mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text("☁️ 已同步到云端"),
@@ -330,46 +364,60 @@ class _MainScreenState extends State<MainScreen>
   }
 
   Future<void> _testBackendConnection() async {
-    final url = Uri.parse('http://10.0.2.2:8080/api/v1/tasks'); // 注意加上 api/v1
+    // 你的后端地址，注意真机调试时不要用 localhost
+    final url = Uri.parse('http://10.0.2.2:8080/api/v1/tasks');
     try {
-      // ... (测试逻辑可以简化，主要逻辑已经在 loadData 里了)
       print("测试连接...");
       await ApiService().fetchTasks();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("✅ 后端连接成功")));
+      }
     } catch (e) {
       print(e);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("❌ 连接失败: $e")));
+      }
     }
   }
 
-  void _deleteTask(Task task) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text("确认删除"),
-        content: const Text("确定要放弃这个挑战吗？"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("取消", style: TextStyle(color: Colors.grey)),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
+  Future<bool> _confirmDelete() async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
             ),
-            onPressed: () async {
-              Navigator.pop(context);
-              setState(() => tasks.remove(task));
-              if (task.id != null) {
-                NotificationService().cancelNotification(task.id!);
-                await ApiService().deleteTask(task.id!);
-              }
-              _saveData();
-            },
-            child: const Text("删除"),
+            title: const Text("确认删除"),
+            content: const Text("确定要放弃这个挑战吗？"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("取消", style: TextStyle(color: Colors.grey)),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text("删除"),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ) ??
+        false;
+  }
+
+  void _performDelete(Task task) async {
+    setState(() => tasks.remove(task));
+    if (task.id != null) {
+      NotificationService().cancelNotification(task.id!);
+      await ApiService().deleteTask(task.id!);
+    }
+    _saveData();
   }
 
   void _buyItem(String name, int price, Function effect) {
@@ -428,13 +476,11 @@ class _MainScreenState extends State<MainScreen>
         continue;
       }
 
-      // 🚀 [修复 2] 这里必须同时检查 null 和 isEmpty (空字符串)
       if (task.deadline == null || task.deadline!.isEmpty) {
         noDate.add(task);
         continue;
       }
 
-      // 现在下面的 deadline 肯定是合法的字符串了
       if (_isOverdue(task.deadline)) {
         overdue.add(task);
         continue;
@@ -450,22 +496,24 @@ class _MainScreenState extends State<MainScreen>
           future.add(task);
         }
       } catch (e) {
-        // 如果万一解析失败，放进待办
         noDate.add(task);
       }
     }
 
     int sortTime(Task a, Task b) => a.deadline!.compareTo(b.deadline!);
-    int sortId(Task a, Task b) => b.id!.compareTo(a.id!);
 
-    // ... (排序逻辑省略，保持不变) ...
     try {
       overdue.sort(sortTime);
     } catch (e) {}
     try {
       today.sort(sortTime);
     } catch (e) {}
-    // ...
+    try {
+      tomorrow.sort(sortTime);
+    } catch (e) {}
+    try {
+      future.sort(sortTime);
+    } catch (e) {}
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 80, top: 16),
@@ -580,7 +628,8 @@ class _MainScreenState extends State<MainScreen>
               (task) => TaskTile(
                 task: task,
                 onToggle: () => toggleTask(task),
-                onDelete: () => _deleteTask(task),
+                onConfirmDelete: _confirmDelete,
+                onDelete: () => _performDelete(task),
                 onEdit: () => _editTask(task),
               ),
             )
@@ -595,11 +644,14 @@ class _MainScreenState extends State<MainScreen>
       currentXp = 0;
       maxHp = 100;
       currentHp = 100;
+      _timer?.cancel(); // 安全起见
+      _isGameOverProcessing = false;
     });
     _saveData();
+    _startTimer(); // 重启
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text("🔄 开发模式：等级已重置")));
+    ).showSnackBar(const SnackBar(content: Text("🔄 开发模式：状态已重置")));
   }
 
   void _showDebugResetDialog() {
