@@ -19,6 +19,7 @@ import 'services/notification_service.dart';
 import 'services/audio_service.dart';
 import 'services/storage_service.dart';
 import 'services/api_service.dart'; // [新增]
+import 'screens/login_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,11 +31,16 @@ void main() async {
       statusBarIconBrightness: Brightness.light,
     ),
   );
-  runApp(const HeroApp());
+  // [新增] 初始化 API 并检查登录状态
+  final bool isLoggedIn = await ApiService().init();
+
+  // [修改] 把登录状态传给 App
+  runApp(HeroApp(isLoggedIn: isLoggedIn));
 }
 
 class HeroApp extends StatelessWidget {
-  const HeroApp({super.key});
+  final bool isLoggedIn; // [新增] 接收状态
+  const HeroApp({super.key, required this.isLoggedIn});
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +95,7 @@ class HeroApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const MainScreen(),
+      home: isLoggedIn ? const MainScreen() : const LoginScreen(),
     );
   }
 }
@@ -376,7 +382,10 @@ class _MainScreenState extends State<MainScreen>
             });
 
             // 2. 悄悄发送给服务器
-            final success = await ApiService().createTask(newTask);
+            final success = await ApiService().createTask(
+              title,
+              deadline?.toIso8601String(),
+            );
 
             if (success) {
               ScaffoldMessenger.of(context).showSnackBar(
