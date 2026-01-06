@@ -6,7 +6,7 @@ import 'screens/main_screen.dart'; // 👈 现在这里可以正常引用了
 import 'screens/login_screen.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
-import 'services/api_service.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +38,16 @@ class HeroApp extends StatelessWidget {
     return MaterialApp(
       title: 'Hero Journey',
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('zh', 'CN'), // 支持中文
+        Locale('en', 'US'), // 支持英文
+      ],
+      locale: const Locale('zh'), // 强制使用中文
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
