@@ -161,9 +161,9 @@ class _MainScreenState extends State<MainScreen>
     }
   }
 
-  // 🚀 [修复 3] 修复无限弹窗和过度渲染的核心逻辑
-  void _checkOverdueAndPunish() {
-    // 如果正在处理游戏结束，或者已经挂了且没复活甲，就停止计算，防止无限弹窗
+  // 🚀 [修复] 增加 async 关键字，以便调用 API
+  void _checkOverdueAndPunish() async {
+    // 如果正在处理游戏结束，或者已经挂了且没复活甲，就停止计算
     if (_isGameOverProcessing || (currentHp <= 0 && !hasResurrectionCross)) {
       return;
     }
@@ -172,34 +172,49 @@ class _MainScreenState extends State<MainScreen>
     bool tookDamage = false;
 
     for (var task in tasks) {
+      // 判断是否过期
       if (!task.isDone && _isOverdue(task.deadline)) {
+        // 如果还没被惩罚过
         if (!task.punished) {
           currentHp -= 10;
           if (currentHp < 0) currentHp = 0;
-          task.punished = true;
+
+          task.punished = true; // 本地标记为已惩罚
           hasChanged = true;
           tookDamage = true;
+
+          // 👇👇👇 核心修复 1：立刻告诉服务器 "这个任务已经罚过了" 👇👇👇
+          // 这样下次登录时，服务器返回的 is_punished 就是 true，不会再进这个 if 了
+          await ApiService().updateTask(task);
         }
       }
     }
 
     // 只有数据真正改变时，才刷新界面
     if (hasChanged) {
-      _saveData();
-      setState(() {}); // ✅ 只有这里才调用 setState
+      _saveData(); // 保存到本地
+
+      // 👇👇👇 核心修复 2：同步被扣掉的血量 (HP) 到服务器 👇👇👇
+      ApiService().syncStats(level, gold, currentXp, currentHp, maxHp);
+
+      if (mounted) {
+        setState(() {}); // 刷新 UI
+      }
 
       if (tookDamage) {
         AudioService().playDamage();
         HapticFeedback.heavyImpact();
         _shakeController.forward();
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("⚠️ 任务过期！受到伤害！"),
-            backgroundColor: Theme.of(context).colorScheme.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text("⚠️ 任务过期！受到伤害！"),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
 
       // 死亡逻辑
@@ -207,7 +222,7 @@ class _MainScreenState extends State<MainScreen>
         if (hasResurrectionCross) {
           _triggerResurrection();
         } else {
-          _handleGameOver(); // 抽取出来的死亡处理逻辑
+          _handleGameOver();
         }
       }
     }

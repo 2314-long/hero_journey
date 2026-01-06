@@ -5,7 +5,7 @@ class Task {
   String title;
   String? deadline; // 允许为空
   bool isDone;
-  bool punished; // 本地逻辑字段，不需要后端存
+  bool punished;
 
   Task({
     this.id,
@@ -29,7 +29,7 @@ class Task {
 
       // 👆👆👆 修复结束 👆👆👆
       isDone: json['is_done'] ?? false,
-      punished: false,
+      punished: json['is_punished'] ?? false,
     );
   }
 
@@ -40,7 +40,7 @@ class Task {
       'title': title,
       'deadline': deadline,
       'is_done': isDone,
-      'punished': punished,
+      'is_punished': punished,
     };
   }
 
