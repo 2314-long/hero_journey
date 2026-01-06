@@ -1,30 +1,28 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+// 移除对 shared_preferences 的直接引用，统一走 StorageService
+// import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task.dart';
+import '../models/item.dart';
+import 'storage_service.dart';
 
 class ApiService {
   // 1. 基础配置
-  // 注意：现在的 API 都有了 /api/v1 前缀
+  // Android 模拟器用 10.0.2.2，真机调试请换成电脑局域网 IP
   static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
 
-  // 内存里存一个 token，方便随用随取
-  static String? _token;
+  // 移除 static _token 和 init()，因为我们现在每次都从 StorageService 读，保证最新
+  // 移除 Map<String, String> get _headers ...
 
-  // 2. 初始化：启动时检查有没有存过的 Token
-  Future<bool> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString('auth_token');
-    print("🔑 初始化 Token: $_token");
-    return _token != null;
+  // ✅ [核心修复] 统一获取请求头的方法
+  // 每次调用都去读取最新的 Token，防止 Token 过期或为空
+  Future<Map<String, String>> _getHeaders() async {
+    final token = await StorageService().getToken();
+    return {
+      "Content-Type": "application/json",
+      if (token != null) "Authorization": "Bearer $token",
+    };
   }
-
-  // Helper: 获取带 Token 的 Header
-  Map<String, String> get _headers => {
-    "Content-Type": "application/json",
-    // 如果有 token，就加上 Bearer 前缀；否则就不加 (比如登录注册时)
-    if (_token != null) "Authorization": "Bearer $_token",
-  };
 
   // --- 🔐 认证模块 (Auth) ---
 
@@ -33,17 +31,17 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/login'),
-        headers: {"Content-Type": "application/json"},
+        headers: {"Content-Type": "application/json"}, // 登录不需要 Token
         body: jsonEncode({"email": email, "password": password}),
       );
 
       if (response.statusCode == 200) {
+        // 防止中文乱码
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        _token = data['token']; // 拿到通行证
+        final String token = data['token'];
 
-        // 持久化保存 (下次打开不用登录)
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_token', _token!);
+        // ✅ 统一使用 StorageService 保存
+        await StorageService().saveToken(token);
         return true;
       }
     } catch (e) {
@@ -57,7 +55,7 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/register'),
-        headers: {"Content-Type": "application/json"},
+        headers: {"Content-Type": "application/json"}, // 注册不需要 Token
         body: jsonEncode({
           "username": username,
           "email": email,
@@ -73,54 +71,60 @@ class ApiService {
 
   // 登出
   Future<void> logout() async {
-    _token = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
+    await StorageService().removeToken();
   }
 
   // --- 📋 任务模块 (Task) ---
-  // 注意：URL 变了，且不再需要手动传 user_id (后端自己会从 Token 里取)
 
+  // 获取任务列表
   Future<List<Task>> fetchTasks() async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/tasks'),
-        headers: _headers,
+        headers: await _getHeaders(), // ✅ 使用统一的 headers
       );
+
       if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        // 注意：后端返回结构是 {"data": [...]}
-        final List<dynamic> list = data['data'];
-        return list.map((json) => Task.fromJson(json)).toList();
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((json) => Task.fromJson(json)).toList();
+      } else {
+        print("获取任务失败: ${response.statusCode}");
       }
     } catch (e) {
-      print("💥 获取任务失败: $e");
+      print("解析任务出错: $e");
     }
     return [];
   }
 
-  Future<bool> createTask(String title, String? deadline) async {
+  Future<Task?> createTask(String title, String? deadline) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/tasks'),
-        headers: _headers,
-        body: jsonEncode({"title": title, "deadline": deadline}),
+        headers: await _getHeaders(), // ✅ 使用统一的 headers
+        body: jsonEncode({'title': title, 'deadline': deadline}),
       );
-      return response.statusCode == 200;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return Task.fromJson(jsonDecode(utf8.decode(response.bodyBytes)));
+      } else {
+        print("创建任务失败: ${response.body}");
+      }
     } catch (e) {
-      return false;
+      print("创建任务异常: $e");
     }
+    return null;
   }
 
   Future<bool> updateTask(Task task) async {
     try {
       final response = await http.put(
         Uri.parse('$baseUrl/tasks/${task.id}'),
-        headers: _headers,
+        headers: await _getHeaders(), // ✅ 修复：之前这里用了 _headers 导致没 Token
         body: jsonEncode(task.toJson()),
       );
       return response.statusCode == 200;
     } catch (e) {
+      print("更新任务失败: $e");
       return false;
     }
   }
@@ -129,10 +133,11 @@ class ApiService {
     try {
       final response = await http.delete(
         Uri.parse('$baseUrl/tasks/$id'),
-        headers: _headers,
+        headers: await _getHeaders(), // ✅ 修复
       );
       return response.statusCode == 200;
     } catch (e) {
+      print("删除任务失败: $e");
       return false;
     }
   }
@@ -143,13 +148,13 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/stats'),
-        headers: _headers,
+        headers: await _getHeaders(), // ✅ 修复
       );
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        return jsonDecode(utf8.decode(response.bodyBytes));
       }
     } catch (e) {
-      print("💥 $e");
+      print("💥 获取属性失败: $e");
     }
     return null;
   }
@@ -157,9 +162,8 @@ class ApiService {
   Future<void> syncStats(int level, int gold, int xp, int hp, int maxHp) async {
     try {
       await http.put(
-        // 注意：后端改成了 PUT
         Uri.parse('$baseUrl/stats'),
-        headers: _headers,
+        headers: await _getHeaders(), // ✅ 修复
         body: jsonEncode({
           "level": level,
           "gold": gold,
@@ -169,7 +173,99 @@ class ApiService {
         }),
       );
     } catch (e) {
-      print("💥 $e");
+      print("💥 同步属性失败: $e");
     }
+  }
+
+  // --- 🛍️ 商店与背包模块 ---
+
+  // 1. 获取商店商品列表
+  Future<List<Item>> fetchShopItems() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/shop'),
+        headers: await _getHeaders(), // ✅ 简化代码
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((json) => Item.fromJson(json)).toList();
+      }
+    } catch (e) {
+      print("加载商店失败: $e");
+    }
+    return []; // 失败返回空列表，防止报错
+  }
+
+  // 2. 购买物品
+  Future<String?> buyItem(int itemId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/shop/buy'),
+        headers: await _getHeaders(), // ✅ 简化代码
+        body: jsonEncode({'item_id': itemId}),
+      );
+
+      if (response.statusCode == 200) {
+        return null; // ✅ 成功
+      } else {
+        final body = jsonDecode(utf8.decode(response.bodyBytes));
+        return body['error']?.toString() ?? "购买失败";
+      }
+    } catch (e) {
+      return "请求错误: $e";
+    }
+  }
+
+  // 3. 获取用户背包
+  Future<List<InventoryItem>> fetchInventory() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/inventory'),
+        headers: await _getHeaders(), // ✅ 简化代码
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data.map((json) => InventoryItem.fromJson(json)).toList();
+      }
+    } catch (e) {
+      print("背包加载失败: $e");
+    }
+    return [];
+  }
+
+  // 4. 装备/卸下物品
+  Future<bool> toggleEquip(int inventoryId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/inventory/equip'),
+        headers: await _getHeaders(), // ✅ 简化代码
+        body: jsonEncode({'inventory_id': inventoryId}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print("装备操作失败: $e");
+      return false;
+    }
+  }
+
+  // 5. 使用物品 (药水)
+  Future<String?> useItem(int inventoryId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/inventory/use'),
+        headers: await _getHeaders(), // ✅ 简化代码
+        body: jsonEncode({'inventory_id': inventoryId}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data['message'];
+      }
+    } catch (e) {
+      print("使用物品失败: $e");
+    }
+    return null;
   }
 }

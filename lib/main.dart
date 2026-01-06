@@ -20,8 +20,8 @@ void main() async {
     ),
   );
 
-  // 初始化 API 并检查 Token
-  final bool isLoggedIn = await ApiService().init();
+  final token = await StorageService().getToken();
+  final bool isLoggedIn = token != null;
 
   runApp(HeroApp(isLoggedIn: isLoggedIn));
 }

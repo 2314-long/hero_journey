@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:confetti/confetti.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'login_screen.dart';
 
 // 引入组件
 import '../widgets/shake_widget.dart';
@@ -324,38 +325,51 @@ class _MainScreenState extends State<MainScreen>
       builder: (context) {
         return AddTaskDialog(
           onSubmit: (title, deadline) async {
-            int taskId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-            final newTask = Task(
-              id: taskId,
+            // 1. 先用临时 ID 在本地显示（为了UI即时反馈）
+            // 这里的 ID 是时间戳，比如 1767692947
+            int tempId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+            final tempTask = Task(
+              id: tempId,
               title: title,
               deadline: deadline?.toIso8601String(),
             );
 
             setState(() {
-              tasks.add(newTask);
+              tasks.add(tempTask);
             });
 
-            final success = await ApiService().createTask(
+            // 2. 发送给后端，并等待返回真正的 Task
+            final serverTask = await ApiService().createTask(
               title,
               deadline?.toIso8601String(),
             );
 
-            if (success && mounted) {
+            if (serverTask != null && mounted) {
+              // ✅ 关键修复：用真正的服务器任务替换掉本地的临时任务
+              setState(() {
+                // 找到刚才那个临时任务，把它删了
+                tasks.removeWhere((t) => t.id == tempId);
+                // 把服务器返回的（带正确ID的）任务加进来
+                tasks.add(serverTask);
+              });
+
+              _saveData(); // 保存正确的 ID 到本地缓存
+
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text("☁️ 已同步到云端"),
                   duration: Duration(seconds: 1),
                 ),
               );
-            }
-            _saveData();
 
-            if (deadline != null) {
-              NotificationService().scheduleNotification(
-                taskId,
-                title,
-                deadline,
-              );
+              // 重新设置提醒（使用真正的 ID）
+              if (deadline != null) {
+                NotificationService().scheduleNotification(
+                  serverTask.id!,
+                  title,
+                  deadline,
+                );
+              }
             }
           },
         );
@@ -418,6 +432,41 @@ class _MainScreenState extends State<MainScreen>
       await ApiService().deleteTask(task.id!);
     }
     _saveData();
+  }
+
+  // 👇👇👇 [新增] 处理退出登录逻辑 👇👇👇
+  void _handleLogout() async {
+    // 1. 弹出确认框 (防止手滑)
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("退出登录"),
+        content: const Text("确定要退出当前账号吗？"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("取消"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("退出", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      // 2. 清除本地所有缓存 (Token + 游戏数据)
+      await StorageService().clearAll();
+
+      if (mounted) {
+        // 3. 跳转回登录页，并清空路由栈 (让用户按返回键回不来)
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false, // 这里的 false 表示删掉之前所有的页面记录
+        );
+      }
+    }
   }
 
   void _buyItem(String name, int price, Function effect) {
@@ -692,6 +741,14 @@ class _MainScreenState extends State<MainScreen>
                   icon: const Icon(Icons.restart_alt_rounded),
                   onPressed: _showDebugResetDialog,
                 ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.logout_rounded,
+                    color: Colors.redAccent,
+                  ), // 红色图标醒目一点
+                  tooltip: "退出登录",
+                  onPressed: _handleLogout,
+                ),
                 const SizedBox(width: 8),
               ]
             : null,
@@ -705,25 +762,10 @@ class _MainScreenState extends State<MainScreen>
                   ? _buildHomePage()
                   : ShopPage(
                       gold: gold,
-                      currentHp: currentHp,
-                      maxHp: maxHp,
-                      hasResurrectionCross: hasResurrectionCross,
-                      onBuyHealth: () {
-                        if (currentHp >= maxHp) return;
-                        _buyItem("小型血瓶", 50, () {
-                          currentHp += 20;
-                          if (currentHp > maxHp) currentHp = maxHp;
-                        });
+                      onRefreshData: () {
+                        // 购买成功后，重新加载数据（同步金币余额）
+                        _loadData();
                       },
-                      onBuyCross: () {
-                        if (hasResurrectionCross) return;
-                        _buyItem(
-                          "复活十字架",
-                          100,
-                          () => hasResurrectionCross = true,
-                        );
-                      },
-                      onBuyCoffee: () => _buyItem("咖啡", 10, () {}),
                     ),
             ),
             Align(
