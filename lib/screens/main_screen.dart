@@ -253,39 +253,86 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void toggleTask(Task task) async {
-    if (_isOverdue(task.deadline)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("🚫 任务已失效"),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
+    // 1. 如果任务已过期，不允许操作
+    if (task.deadline != null) {
+      final due = DateTime.parse(task.deadline!);
+      if (DateTime.now().isAfter(due) && !task.isDone) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("🚫 任务已过期，无法操作")));
+        return;
+      }
     }
 
+    // 播放音效
     if (!task.isDone) {
       AudioService().playSuccess();
     }
 
     setState(() {
+      // 切换状态
       task.isDone = !task.isDone;
 
       if (task.isDone) {
+        // --- ✅ 完成任务：加钱、加经验 ---
         gold += 10;
         currentXp += 50;
+
+        // 检查升级
         _checkLevelUp();
+
+        // 取消提醒
         if (task.id != null) {
           NotificationService().cancelNotification(task.id!);
         }
       } else {
+        // --- ❌ 取消任务：扣钱、扣经验 ---
         gold -= 10;
         currentXp -= 50;
+
+        // 🛠️ 核心修复：处理经验值为负的情况 (降级逻辑)
+        if (currentXp < 0) {
+          if (level > 1) {
+            // 📉 触发降级！
+            level--;
+            maxHp -= 10; // 扣除升级加的血上限
+            if (currentHp > maxHp) currentHp = maxHp; // 血量如果溢出要压回来
+
+            // 计算回退后的经验值
+            // 逻辑：上一级的满经验 + 当前负的经验
+            // 例如：Lv.2 剩 -10 XP。回到 Lv.1 (上限100)。
+            // 结果：100 + (-10) = 90 XP。
+            int prevLevelMaxXp = level * 100;
+            currentXp = prevLevelMaxXp + currentXp;
+
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text("📉 等级下降！经验值回退")));
+          } else {
+            // 如果已经是 1 级了，就只能归零，不能降级
+            currentXp = 0;
+          }
+        }
+
+        // 金币也不能为负
         if (gold < 0) gold = 0;
-        if (currentXp < 0) currentXp = 0;
       }
     });
-    await ApiService().updateTask(task);
-    _saveData();
+
+    // 同步到后端
+    final success = await ApiService().updateTask(task);
+    if (!success) {
+      // 如果网络失败，回滚状态 (可选，为了简单先提示)
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("⚠️ 同步失败，请检查网络")));
+      }
+    } else {
+      // 如果同步成功，顺便把最新的属性存到本地和后端
+      _saveData();
+      ApiService().syncStats(level, gold, currentXp, currentHp, maxHp);
+    }
   }
 
   void _editTask(Task task) {

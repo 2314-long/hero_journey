@@ -18,11 +18,17 @@ class Task {
   // 1. 从后端 JSON 解析 (核心修复点)
   factory Task.fromJson(Map<String, dynamic> json) {
     return Task(
-      id: json['id'], // 对应后端的 json:"id"
-      title: json['title'] ?? "未命名任务", // 对应 json:"title"
-      deadline: json['deadline'], // 对应 json:"deadline"
-      isDone: json['is_done'] ?? false, // 对应 json:"is_done"
-      // punished 字段后端没存，默认为 false
+      id: json['id'],
+      title: json['title'] ?? "未命名任务",
+
+      // 👇👇👇 核心修复 👇👇👇
+      // 逻辑：如果 deadline 是 null 或者是空字符串 ""，就统统视为 null
+      deadline: (json['deadline'] as String?)?.isNotEmpty == true
+          ? json['deadline']
+          : null,
+
+      // 👆👆👆 修复结束 👆👆👆
+      isDone: json['is_done'] ?? false,
       punished: false,
     );
   }
