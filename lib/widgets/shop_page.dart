@@ -81,29 +81,36 @@ class _ShopPageState extends State<ShopPage>
   }
 
   void _handleUse(InventoryItem invItem) async {
-    if (invItem.item.type != "CONSUMABLE") {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("装备请在角色面板穿戴")));
-      return;
-    }
+    // 🔥 不再拦截装备，直接调用 API
+    // 因为后端 UseItem 接口现在已经很智能了，能处理喝药，也能处理穿装备
 
     final message = await ApiService().useItem(invItem.id);
     if (!mounted) return;
 
     if (message != null) {
-      AudioService().playSuccess();
+      // 成功
+      if (invItem.item.type == "EQUIPMENT") {
+        // 如果是装备，播放一个穿戴音效（可选）
+        AudioService().playBuy();
+      } else {
+        // 如果是药水，播放成功音效
+        AudioService().playSuccess();
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("✨ $message"),
+          content: Text(
+            invItem.item.type == "EQUIPMENT" ? message : "✨ $message",
+          ), // 后端会返回 "装备已穿戴" 或 "已卸下"
           backgroundColor: Colors.blueAccent,
         ),
       );
-      widget.onRefreshData(); // 刷新血量
-      _refreshData(); // 刷新背包
+      widget.onRefreshData(); // 刷新数据
+      _refreshData();
     } else {
+      // 失败
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("❌ 使用失败"), backgroundColor: Colors.red),
+        const SnackBar(content: Text("❌ 操作失败"), backgroundColor: Colors.red),
       );
     }
   }
@@ -474,7 +481,7 @@ class _ShopPageState extends State<ShopPage>
                                 ],
                               ),
                             ),
-                            // 使用按钮
+                            // ✨ 动态按钮：替换上面的 InkWell
                             InkWell(
                               onTap: () => _handleUse(invItem),
                               borderRadius: BorderRadius.circular(12),
@@ -484,17 +491,37 @@ class _ShopPageState extends State<ShopPage>
                                   vertical: 8,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFFF3E0),
+                                  // 🎨 颜色逻辑：
+                                  // 1. 是装备 & 已穿戴 -> 灰色背景 (表示卸下)
+                                  // 2. 是装备 & 没穿戴 -> 绿色背景 (表示穿上)
+                                  // 3. 是消耗品 -> 橙色背景 (表示使用)
+                                  color: (item.type == "EQUIPMENT")
+                                      ? (invItem.isEquipped
+                                            ? Colors.grey.shade200
+                                            : const Color(0xFFE8F5E9)) // 浅绿
+                                      : const Color(0xFFFFF3E0), // 浅橙
+
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: Colors.orange.shade200,
+                                    color: (item.type == "EQUIPMENT")
+                                        ? (invItem.isEquipped
+                                              ? Colors.grey
+                                              : Colors.green)
+                                        : Colors.orange.shade200,
                                   ),
                                 ),
                                 child: Text(
-                                  "使用",
+                                  // 📝 文字逻辑
+                                  (item.type == "EQUIPMENT")
+                                      ? (invItem.isEquipped ? "卸下" : "装备")
+                                      : "使用",
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.orange.shade800,
+                                    color: (item.type == "EQUIPMENT")
+                                        ? (invItem.isEquipped
+                                              ? Colors.grey.shade700
+                                              : Colors.green.shade800)
+                                        : Colors.orange.shade800,
                                   ),
                                 ),
                               ),

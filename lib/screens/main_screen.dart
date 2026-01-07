@@ -108,7 +108,8 @@ class _MainScreenState extends State<MainScreen>
     ApiService().syncStats(level, gold, currentXp, currentHp, maxHp);
   }
 
-  void _loadData() async {
+  // 👇 把原来的 void 改成 Future<void>，这样才能被 await
+  Future<void> _loadData() async {
     final data = StorageService().loadData();
     final apiTasks = await ApiService().fetchTasks();
     final apiStats = await ApiService().fetchStats();
@@ -133,10 +134,8 @@ class _MainScreenState extends State<MainScreen>
 
       if (apiTasks.isNotEmpty) {
         tasks = apiTasks;
-        print("✅ 已从服务器加载 ${tasks.length} 个任务");
       } else {
         tasks = data['tasks'];
-        print("⚠️ 服务器未连接，使用本地缓存");
       }
     });
   }
@@ -268,7 +267,7 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void toggleTask(Task task) async {
-    // 1. 如果任务已过期，不允许操作
+    // 1. 🚫 过期校验 (保留)
     if (task.deadline != null) {
       final due = DateTime.parse(task.deadline!);
       if (DateTime.now().isAfter(due) && !task.isDone) {
@@ -279,74 +278,63 @@ class _MainScreenState extends State<MainScreen>
       }
     }
 
-    // 播放音效
+    // 2. 🎵 播放音效 (保留)
     if (!task.isDone) {
       AudioService().playSuccess();
     }
 
+    // 🔥【关键步骤 A】记录操作前的旧等级
+    final int oldLevel = level;
+
+    // 3. 🔄 乐观更新 UI (只改状态，不改数值)
     setState(() {
-      // 切换状态
       task.isDone = !task.isDone;
 
-      if (task.isDone) {
-        // --- ✅ 完成任务：加钱、加经验 ---
-        gold += 10;
-        currentXp += 50;
-
-        // 检查升级
-        _checkLevelUp();
-
-        // 取消提醒
-        if (task.id != null) {
-          NotificationService().cancelNotification(task.id!);
-        }
-      } else {
-        // --- ❌ 取消任务：扣钱、扣经验 ---
-        gold -= 10;
-        currentXp -= 50;
-
-        // 🛠️ 核心修复：处理经验值为负的情况 (降级逻辑)
-        if (currentXp < 0) {
-          if (level > 1) {
-            // 📉 触发降级！
-            level--;
-            maxHp -= 10; // 扣除升级加的血上限
-            if (currentHp > maxHp) currentHp = maxHp; // 血量如果溢出要压回来
-
-            // 计算回退后的经验值
-            // 逻辑：上一级的满经验 + 当前负的经验
-            // 例如：Lv.2 剩 -10 XP。回到 Lv.1 (上限100)。
-            // 结果：100 + (-10) = 90 XP。
-            int prevLevelMaxXp = level * 100;
-            currentXp = prevLevelMaxXp + currentXp;
-
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text("📉 等级下降！经验值回退")));
-          } else {
-            // 如果已经是 1 级了，就只能归零，不能降级
-            currentXp = 0;
-          }
-        }
-
-        // 金币也不能为负
-        if (gold < 0) gold = 0;
+      // 取消提醒 (保留)
+      if (task.isDone && task.id != null) {
+        NotificationService().cancelNotification(task.id!);
       }
     });
 
-    // 同步到后端
+    // 4. ☁️ 发送给后端
     final success = await ApiService().updateTask(task);
+
     if (!success) {
-      // 如果网络失败，回滚状态 (可选，为了简单先提示)
+      // ❌ 失败回滚
       if (mounted) {
+        setState(() {
+          task.isDone = !task.isDone; // 撤销操作
+        });
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text("⚠️ 同步失败，请检查网络")));
       }
     } else {
-      // 如果同步成功，顺便把最新的属性存到本地和后端
-      _saveData();
-      ApiService().syncStats(level, gold, currentXp, currentHp, maxHp);
+      // ✅ 成功后
+
+      // 🔥【关键步骤 B】必须加 await！等后端计算好的数据回来
+      await _loadData();
+
+      // 🔥【关键步骤 C】比对等级，触发特效
+      if (level > oldLevel) {
+        // 1. 播放升级音效
+        AudioService().playLevelUp();
+
+        // 2. 播放彩带动画 (你的控制器变量)
+        _controllerLeft.play();
+        _controllerRight.play();
+
+        // 3. 弹出升级对话框 (复用你已有的组件)
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => LevelUpDialog(level: level),
+        );
+      }
+
+      // ⚠️ 注意：不要再调用 ApiService().syncStats(...) 了，
+      // 因为 _loadData 刚把正确的数据拉下来，你再 sync 会把旧数据覆盖回去。
+      _saveData(); // 仅保存到本地缓存即可
     }
   }
 

@@ -42,7 +42,7 @@ class InventoryItem {
   InventoryItem({
     required this.id,
     required this.item,
-    required this.isEquipped,
+    this.isEquipped = false,
     required this.quantity,
   });
 
@@ -50,7 +50,7 @@ class InventoryItem {
     return InventoryItem(
       id: json['id'],
       item: Item.fromJson(json['item']),
-      isEquipped: json['is_equipped'],
+      isEquipped: json['is_equipped'] ?? false,
       quantity: json['quantity'],
     );
   }
