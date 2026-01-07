@@ -160,63 +160,59 @@ class _MainScreenState extends State<MainScreen>
     }
   }
 
-  // 🚀 [修复] 增加 async 关键字，以便调用 API
   void _checkOverdueAndPunish() async {
-    // 如果正在处理游戏结束，或者已经挂了且没复活甲，就停止计算
+    // 1. 安全检查 (保留)
     if (_isGameOverProcessing || (currentHp <= 0 && !hasResurrectionCross)) {
       return;
     }
 
     bool hasChanged = false;
-    bool tookDamage = false;
 
+    // 2. 遍历检查过期
     for (var task in tasks) {
-      // 判断是否过期
       if (!task.isDone && _isOverdue(task.deadline)) {
-        // 如果还没被惩罚过
         if (!task.punished) {
-          currentHp -= 10;
-          if (currentHp < 0) currentHp = 0;
-
-          task.punished = true; // 本地标记为已惩罚
+          // 🛑 核心修改：前端不再自己 currentHp -= 10
+          // 我们只标记状态，告诉后端"这个任务过期了"
+          task.punished = true;
           hasChanged = true;
-          tookDamage = true;
 
-          // 👇👇👇 核心修复 1：立刻告诉服务器 "这个任务已经罚过了" 👇👇👇
-          // 这样下次登录时，服务器返回的 is_punished 就是 true，不会再进这个 if 了
+          // 发送给后端 -> 后端会去查盾牌 -> 后端扣除正确的血量
           await ApiService().updateTask(task);
         }
       }
     }
 
-    // 只有数据真正改变时，才刷新界面
+    // 3. 只有状态改变了，才去拉取结果
     if (hasChanged) {
-      _saveData(); // 保存到本地
+      // 记录一下旧血量，为了判断是否要震动
+      final oldHp = currentHp;
 
-      // 👇👇👇 核心修复 2：同步被扣掉的血量 (HP) 到服务器 👇👇👇
-      ApiService().syncStats(level, gold, currentXp, currentHp, maxHp);
+      // 🔥 关键：拉取后端算好的新血量 (此时已经算上盾牌减伤了)
+      await _loadData();
 
-      if (mounted) {
-        setState(() {}); // 刷新 UI
-      }
+      // ❌ 删掉这行！不要再反向同步覆盖后端了
+      // ApiService().syncStats(...)
 
-      if (tookDamage) {
+      // 4. 判断是否真的扣血了 (触发特效)
+      // 如果盾牌太强把伤害抵消成了0，就不震动
+      if (currentHp < oldHp) {
         AudioService().playDamage();
         HapticFeedback.heavyImpact();
         _shakeController.forward();
 
         if (mounted) {
+          final damage = oldHp - currentHp; // 算出实际受到的伤害
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text("⚠️ 任务过期！受到伤害！"),
+              content: Text("⚠️ 任务过期！受到 $damage 点伤害 (护盾已生效)"),
               backgroundColor: Theme.of(context).colorScheme.error,
-              behavior: SnackBarBehavior.floating,
             ),
           );
         }
       }
 
-      // 死亡逻辑
+      // 5. 死亡逻辑 (保留)
       if (currentHp <= 0) {
         if (hasResurrectionCross) {
           _triggerResurrection();
