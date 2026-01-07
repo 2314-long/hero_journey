@@ -36,7 +36,7 @@ class HeroApp extends StatelessWidget {
     final seedColor = const Color(0xFF6C63FF);
 
     return MaterialApp(
-      title: 'Hero Journey',
+      title: '英雄之旅',
       debugShowCheckedModeBanner: false,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,

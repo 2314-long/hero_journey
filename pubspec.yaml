@@ -105,5 +105,5 @@ flutter_launcher_icons:
   ios: true
   image_path: "assets/icon/icon.png" # 你的图片路径
   min_sdk_android: 21 # 可选，保持默认即可
-  adaptive_icon_background: "#6C63FF" # [可选] 安卓图标的背景色，设为我们的主色调蓝紫色
-  adaptive_icon_foreground: "assets/icon/icon.png" # [可选] 前景图，还是用那个图标
+  # adaptive_icon_background: "#6C63FF" # [可选] 安卓图标的背景色，设为我们的主色调蓝紫色
+  # adaptive_icon_foreground: "assets/icon/icon.png" # [可选] 前景图，还是用那个图标
