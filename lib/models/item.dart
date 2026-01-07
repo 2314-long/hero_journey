@@ -38,12 +38,14 @@ class InventoryItem {
   final Item item;
   final bool isEquipped;
   final int quantity;
+  final DateTime? expiresAt;
 
   InventoryItem({
     required this.id,
     required this.item,
     this.isEquipped = false,
     required this.quantity,
+    this.expiresAt,
   });
 
   factory InventoryItem.fromJson(Map<String, dynamic> json) {
@@ -52,6 +54,9 @@ class InventoryItem {
       item: Item.fromJson(json['item']),
       isEquipped: json['is_equipped'] ?? false,
       quantity: json['quantity'],
+      expiresAt: json['expires_at'] != null
+          ? DateTime.parse(json['expires_at'])
+          : null,
     );
   }
 }

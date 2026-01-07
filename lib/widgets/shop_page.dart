@@ -478,6 +478,77 @@ class _ShopPageState extends State<ShopPage>
                                       color: Colors.grey.shade500,
                                     ),
                                   ),
+
+                                  // 👇👇👇 就在这里！把这段“有效期显示”的代码加进去 👇👇👇
+                                  if (item.type == "EQUIPMENT") ...[
+                                    const SizedBox(height: 6),
+                                    Builder(
+                                      builder: (context) {
+                                        // 1. 如果还没穿过 (expiresAt 是空的)
+                                        if (invItem.expiresAt == null) {
+                                          return Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.shade50,
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              "全新 (穿戴后开始计时)",
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.blue.shade700,
+                                              ),
+                                            ),
+                                          );
+                                        }
+
+                                        // 2. 计算剩余时间
+                                        final now = DateTime.now();
+                                        final diff = invItem.expiresAt!
+                                            .difference(now);
+
+                                        // 3. 如果已经过期
+                                        if (diff.isNegative) {
+                                          return const Text(
+                                            "已过期",
+                                            style: TextStyle(
+                                              color: Colors.red,
+                                              fontSize: 10,
+                                            ),
+                                          );
+                                        }
+
+                                        // 4. 显示倒计时
+                                        final hours = diff.inHours;
+                                        final mins = diff.inMinutes % 60;
+
+                                        return Row(
+                                          children: [
+                                            Icon(
+                                              Icons.timer_outlined,
+                                              size: 12,
+                                              color: Colors.orange.shade700,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              "剩余: ${hours}小时 ${mins}分",
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.orange.shade800,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      },
+                                    ),
+                                  ],
+
+                                  // 👆👆👆 代码结束 👆👆👆
                                 ],
                               ),
                             ),
