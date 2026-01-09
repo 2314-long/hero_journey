@@ -197,9 +197,22 @@ class _MainScreenState extends State<MainScreen>
 
         if (mounted) {
           final damage = oldHp - currentHp;
+
+          // 🔥 修复 Bug：动态检查是否装备了盾牌
+          // 假设盾牌的 effectType 是 'DEFENSE'，请根据你数据库实际情况调整
+          bool hasShield = inventory.any(
+            (inv) => inv.isEquipped && inv.item.effectType == 'DMG_REDUCE',
+          );
+
+          // 根据是否有盾牌，显示不同的文字
+          String message = "⚠️ 任务过期！受到 $damage 点伤害";
+          if (hasShield) {
+            message += " (护盾已生效)"; // 只有装备了才加这句
+          }
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text("⚠️ 任务过期！受到 $damage 点伤害 (护盾已生效)"),
+              content: Text(message), // 使用动态生成的文字
               backgroundColor: Theme.of(context).colorScheme.error,
               duration: const Duration(seconds: 2),
             ),
