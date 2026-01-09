@@ -1,8 +1,110 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/item.dart';
 import '../services/api_service.dart';
 import '../services/audio_service.dart';
 
+// ==========================================
+// 🔥 核心优化 1: 独立的倒计时组件
+// 只有这个小组件会每秒刷新，不会影响整个页面
+// ==========================================
+class CountdownTag extends StatefulWidget {
+  final DateTime expiresAt;
+  final VoidCallback onExpired;
+
+  const CountdownTag({
+    super.key,
+    required this.expiresAt,
+    required this.onExpired,
+  });
+
+  @override
+  State<CountdownTag> createState() => _CountdownTagState();
+}
+
+class _CountdownTagState extends State<CountdownTag> {
+  Timer? _timer;
+  late Duration _diff;
+
+  @override
+  void initState() {
+    super.initState();
+    _calculateTime();
+    // 启动局部定时器
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _calculateTime();
+    });
+  }
+
+  void _calculateTime() {
+    final now = DateTime.now();
+    final diff = widget.expiresAt.difference(now);
+
+    if (diff.isNegative) {
+      // 时间到了，停止计时，并通知父组件刷新
+      _timer?.cancel();
+      // 使用 addPostFrameCallback 防止在构建过程中回调报错
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onExpired();
+      });
+    }
+
+    if (mounted) {
+      setState(() {
+        _diff = diff;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_diff.isNegative) {
+      return const SizedBox(); // 过期瞬间暂时隐藏，等待父组件刷新
+    }
+
+    final h = _diff.inHours;
+    final m = _diff.inMinutes % 60;
+    final s = _diff.inSeconds % 60;
+
+    // 格式化时间文本
+    String timeText = "剩余: ";
+    if (h > 0) timeText += "$h小时 ";
+    timeText += "$m分 $s秒";
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.timer_outlined, size: 12, color: Colors.blue.shade700),
+          const SizedBox(width: 4),
+          Text(
+            timeText,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.blue.shade700,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 主页面 ShopPage
+// ==========================================
 class ShopPage extends StatefulWidget {
   final int gold;
   final VoidCallback onRefreshData;
@@ -17,7 +119,10 @@ class _ShopPageState extends State<ShopPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late Future<List<Item>> _shopFuture;
-  late Future<List<InventoryItem>> _inventoryFuture;
+
+  // 这里的变量只用于存储数据，不再用于驱动每秒刷新
+  List<InventoryItem> _currentInventory = [];
+  bool _isLoadingInventory = true;
 
   @override
   void initState() {
@@ -26,14 +131,74 @@ class _ShopPageState extends State<ShopPage>
     _refreshData();
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  // 加载数据
   void _refreshData() {
-    setState(() {
-      _shopFuture = ApiService().fetchShopItems();
-      _inventoryFuture = ApiService().fetchInventory();
+    if (mounted) {
+      setState(() {
+        _shopFuture = ApiService().fetchShopItems();
+        _isLoadingInventory = true;
+      });
+    }
+
+    ApiService().fetchInventory().then((items) {
+      if (mounted) {
+        // 🔥 核心修复：前端双重保险 🔥
+        // 拿到数据后，先自己检查一遍，把所有已过期的装备踢出去！
+        // 这样即使后端慢了一秒，前端 UI 也会立刻把它变没。
+        final now = DateTime.now();
+        items.removeWhere(
+          (item) =>
+              item.isEquipped &&
+              item.expiresAt != null &&
+              now.isAfter(item.expiresAt!),
+        );
+
+        setState(() {
+          _currentInventory = items;
+          _isLoadingInventory = false;
+        });
+      }
     });
   }
 
-  // ✨ 保留你原来的图标逻辑
+  // 🔥 核心改动：当倒计时结束时，只调用这个方法，不重新全量 SetState
+  void _handleItemExpired() {
+    print("物品过期，触发刷新...");
+    // 重新拉取数据，后端会自动清理过期物品
+    _refreshData();
+    widget.onRefreshData();
+  }
+
+  // 分组逻辑 (保持不变)
+  List<Map<String, dynamic>> _groupInventoryItems(List<InventoryItem> rawList) {
+    Map<int, Map<String, dynamic>> grouped = {};
+    for (var inv in rawList) {
+      final itemId = inv.item.id;
+      if (!grouped.containsKey(itemId)) {
+        grouped[itemId] = {
+          'item': inv.item,
+          'totalCount': 0,
+          'activeInv': null,
+          'stackInv': null,
+        };
+      }
+      grouped[itemId]!['totalCount'] += inv.quantity;
+      if (inv.isEquipped) {
+        grouped[itemId]!['activeInv'] = inv;
+      } else {
+        grouped[itemId]!['stackInv'] = inv;
+      }
+    }
+    return grouped.values.toList();
+  }
+
+  // 图标逻辑 (保持不变)
   Widget _getIcon(String path) {
     if (path.contains("potion"))
       return const Icon(Icons.local_drink, color: Colors.redAccent, size: 32);
@@ -52,6 +217,7 @@ class _ShopPageState extends State<ShopPage>
     return const Icon(Icons.help_outline, color: Colors.grey, size: 32);
   }
 
+  // 购买逻辑
   void _handleBuy(Item item) async {
     if (widget.gold < item.price) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -59,7 +225,8 @@ class _ShopPageState extends State<ShopPage>
       );
       return;
     }
-
+    // 乐观 UI 更新：先扣钱 (UI体验更好)
+    // 但这里为了安全，还是等待后端返回
     final errorMsg = await ApiService().buyItem(item.id);
     if (!mounted) return;
 
@@ -71,8 +238,8 @@ class _ShopPageState extends State<ShopPage>
           backgroundColor: Colors.green,
         ),
       );
-      widget.onRefreshData(); // 刷新金币
-      _refreshData(); // 刷新背包和列表
+      widget.onRefreshData();
+      _refreshData();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("购买失败: $errorMsg"), backgroundColor: Colors.red),
@@ -80,35 +247,29 @@ class _ShopPageState extends State<ShopPage>
     }
   }
 
+  // 使用/装备逻辑
   void _handleUse(InventoryItem invItem) async {
-    // 🔥 不再拦截装备，直接调用 API
-    // 因为后端 UseItem 接口现在已经很智能了，能处理喝药，也能处理穿装备
-
+    // 立即显示 Loading 或者给用户反馈 (防止重复点击)
     final message = await ApiService().useItem(invItem.id);
     if (!mounted) return;
 
     if (message != null) {
-      // 成功
       if (invItem.item.type == "EQUIPMENT") {
-        // 如果是装备，播放一个穿戴音效（可选）
         AudioService().playBuy();
       } else {
-        // 如果是药水，播放成功音效
         AudioService().playSuccess();
       }
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             invItem.item.type == "EQUIPMENT" ? message : "✨ $message",
-          ), // 后端会返回 "装备已穿戴" 或 "已卸下"
+          ),
           backgroundColor: Colors.blueAccent,
         ),
       );
-      widget.onRefreshData(); // 刷新数据
-      _refreshData();
+      widget.onRefreshData();
+      _refreshData(); // 操作完刷新
     } else {
-      // 失败
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("❌ 操作失败"), backgroundColor: Colors.red),
       );
@@ -119,7 +280,7 @@ class _ShopPageState extends State<ShopPage>
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // 1. 顶部金币卡片 (保留你的原版设计)
+        // --- 1. 顶部金币卡片 (保持不变) ---
         Container(
           margin: const EdgeInsets.all(16),
           padding: const EdgeInsets.all(20),
@@ -195,23 +356,20 @@ class _ShopPageState extends State<ShopPage>
                 ],
               ),
               const SizedBox(height: 16),
-              // ✨ 新增：嵌入式 Tab 切换 (样式融合)
               Container(
-                height: 44, // 稍微增高一点，手感更好
-                padding: const EdgeInsets.all(4), // 关键：内边距，让滑块悬浮
+                height: 44,
+                padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.15), // 背景槽稍微深一点，增加对比度
-                  borderRadius: BorderRadius.circular(22), // 更加圆润
+                  color: Colors.black.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(22),
                 ),
                 child: TabBar(
                   controller: _tabController,
-                  // 关键设置：让滑块填满整个 tab 区域，而不是只包住文字
                   indicatorSize: TabBarIndicatorSize.tab,
-                  dividerColor: Colors.transparent, // 去掉底部的横线
-                  // ✨ 滑块样式：白色圆角 + 阴影
+                  dividerColor: Colors.transparent,
                   indicator: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(18), // 稍微比外层容器小一点
+                    borderRadius: BorderRadius.circular(18),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.1),
@@ -220,17 +378,12 @@ class _ShopPageState extends State<ShopPage>
                       ),
                     ],
                   ),
-
-                  // ✨ 文字样式
-                  labelColor: const Color(0xFF6C63FF), // 选中状态：紫色字 (因为底是白的)
-                  unselectedLabelColor: Colors.white.withValues(
-                    alpha: 0.9,
-                  ), // 未选中：白色字
+                  labelColor: const Color(0xFF6C63FF),
+                  unselectedLabelColor: Colors.white.withValues(alpha: 0.9),
                   labelStyle: const TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 15, // 字体稍微大一点，撑满空间
+                    fontSize: 15,
                   ),
-
                   tabs: const [
                     Tab(text: "补给商店"),
                     Tab(text: "我的背包"),
@@ -241,21 +394,18 @@ class _ShopPageState extends State<ShopPage>
           ),
         ),
 
-        // 2. 内容区域 (商店/背包)
+        // --- 2. 内容区域 ---
         Expanded(
           child: TabBarView(
             controller: _tabController,
             children: [
-              // --- 商店列表 (你的原版 UI) ---
+              // ====== 商店列表 ======
               FutureBuilder<List<Item>>(
                 future: _shopFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting)
                     return const Center(child: CircularProgressIndicator());
-                  if (snapshot.hasError)
-                    return Center(child: Text("无法连接: ${snapshot.error}"));
                   final items = snapshot.data ?? [];
-
                   return ListView.separated(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -266,7 +416,6 @@ class _ShopPageState extends State<ShopPage>
                     itemBuilder: (context, index) {
                       final item = items[index];
                       final bool canAfford = widget.gold >= item.price;
-
                       return Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -363,15 +512,14 @@ class _ShopPageState extends State<ShopPage>
                 },
               ),
 
-              // --- 背包列表 (沿用商店 UI 风格) ---
-              FutureBuilder<List<InventoryItem>>(
-                future: _inventoryFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting)
+              // ====== 背包列表 (重构版：无闪屏) ======
+              Builder(
+                builder: (context) {
+                  if (_isLoadingInventory && _currentInventory.isEmpty) {
                     return const Center(child: CircularProgressIndicator());
-                  final items = snapshot.data ?? [];
+                  }
 
-                  if (items.isEmpty) {
+                  if (_currentInventory.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -385,22 +533,28 @@ class _ShopPageState extends State<ShopPage>
                           Text(
                             "背包空空如也\n去商店买点东西吧",
                             style: TextStyle(color: Colors.grey[500]),
+                            textAlign: TextAlign.center,
                           ),
                         ],
                       ),
                     );
                   }
 
+                  final groupedItems = _groupInventoryItems(_currentInventory);
+
                   return ListView.separated(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 8,
                     ),
-                    itemCount: items.length,
+                    itemCount: groupedItems.length,
                     separatorBuilder: (ctx, i) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
-                      final invItem = items[index];
-                      final item = invItem.item;
+                      final group = groupedItems[index];
+                      final Item item = group['item'];
+                      final int totalCount = group['totalCount'];
+                      final InventoryItem? activeInv = group['activeInv'];
+                      final InventoryItem? stackInv = group['stackInv'];
 
                       return Container(
                         padding: const EdgeInsets.all(16),
@@ -421,9 +575,7 @@ class _ShopPageState extends State<ShopPage>
                               width: 50,
                               height: 50,
                               decoration: BoxDecoration(
-                                color: Colors.orange.withOpacity(
-                                  0.1,
-                                ), // 背包用不同底色
+                                color: Colors.orange.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Center(
@@ -445,7 +597,7 @@ class _ShopPageState extends State<ShopPage>
                                           ),
                                         ),
                                         child: Text(
-                                          "${invItem.quantity}",
+                                          "$totalCount",
                                           style: const TextStyle(
                                             fontSize: 10,
                                             fontWeight: FontWeight.bold,
@@ -479,82 +631,27 @@ class _ShopPageState extends State<ShopPage>
                                     ),
                                   ),
 
-                                  // 👇👇👇 就在这里！把这段“有效期显示”的代码加进去 👇👇👇
-                                  if (item.type == "EQUIPMENT") ...[
+                                  // 🔥 修复：使用独立的 CountdownTag 组件
+                                  if (activeInv != null &&
+                                      activeInv.expiresAt != null) ...[
                                     const SizedBox(height: 6),
-                                    Builder(
-                                      builder: (context) {
-                                        // 1. 如果还没穿过 (expiresAt 是空的)
-                                        if (invItem.expiresAt == null) {
-                                          return Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 2,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.blue.shade50,
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              "全新 (穿戴后开始计时)",
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.blue.shade700,
-                                              ),
-                                            ),
-                                          );
-                                        }
-
-                                        // 2. 计算剩余时间
-                                        final now = DateTime.now();
-                                        final diff = invItem.expiresAt!
-                                            .difference(now);
-
-                                        // 3. 如果已经过期
-                                        if (diff.isNegative) {
-                                          return const Text(
-                                            "已过期",
-                                            style: TextStyle(
-                                              color: Colors.red,
-                                              fontSize: 10,
-                                            ),
-                                          );
-                                        }
-
-                                        // 4. 显示倒计时
-                                        final hours = diff.inHours;
-                                        final mins = diff.inMinutes % 60;
-
-                                        return Row(
-                                          children: [
-                                            Icon(
-                                              Icons.timer_outlined,
-                                              size: 12,
-                                              color: Colors.orange.shade700,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              "剩余: ${hours}小时 ${mins}分",
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.orange.shade800,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ],
-                                        );
-                                      },
+                                    CountdownTag(
+                                      expiresAt: activeInv.expiresAt!,
+                                      onExpired:
+                                          _handleItemExpired, // 倒计时结束时的回调
                                     ),
                                   ],
-
-                                  // 👆👆👆 代码结束 👆👆👆
                                 ],
                               ),
                             ),
-                            // ✨ 动态按钮：替换上面的 InkWell
                             InkWell(
-                              onTap: () => _handleUse(invItem),
+                              onTap: () {
+                                if (activeInv != null) {
+                                  _handleUse(activeInv);
+                                } else if (stackInv != null) {
+                                  _handleUse(stackInv);
+                                }
+                              },
                               borderRadius: BorderRadius.circular(12),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
@@ -562,37 +659,33 @@ class _ShopPageState extends State<ShopPage>
                                   vertical: 8,
                                 ),
                                 decoration: BoxDecoration(
-                                  // 🎨 颜色逻辑：
-                                  // 1. 是装备 & 已穿戴 -> 灰色背景 (表示卸下)
-                                  // 2. 是装备 & 没穿戴 -> 绿色背景 (表示穿上)
-                                  // 3. 是消耗品 -> 橙色背景 (表示使用)
-                                  color: (item.type == "EQUIPMENT")
-                                      ? (invItem.isEquipped
-                                            ? Colors.grey.shade200
-                                            : const Color(0xFFE8F5E9)) // 浅绿
-                                      : const Color(0xFFFFF3E0), // 浅橙
-
+                                  color: (activeInv != null)
+                                      ? Colors.grey.shade200
+                                      : (item.type == "EQUIPMENT"
+                                            ? const Color(0xFFE8F5E9)
+                                            : const Color(0xFFFFF3E0)),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: (item.type == "EQUIPMENT")
-                                        ? (invItem.isEquipped
-                                              ? Colors.grey
-                                              : Colors.green)
-                                        : Colors.orange.shade200,
+                                    color: (activeInv != null)
+                                        ? Colors.grey
+                                        : (item.type == "EQUIPMENT"
+                                              ? Colors.green.shade800
+                                              : Colors.orange.shade200),
                                   ),
                                 ),
                                 child: Text(
-                                  // 📝 文字逻辑
-                                  (item.type == "EQUIPMENT")
-                                      ? (invItem.isEquipped ? "卸下" : "装备")
-                                      : "使用",
+                                  (activeInv != null)
+                                      ? "卸下"
+                                      : (item.type == "EQUIPMENT"
+                                            ? "装备"
+                                            : "使用"),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: (item.type == "EQUIPMENT")
-                                        ? (invItem.isEquipped
-                                              ? Colors.grey.shade700
-                                              : Colors.green.shade800)
-                                        : Colors.orange.shade800,
+                                    color: (activeInv != null)
+                                        ? Colors.grey.shade700
+                                        : (item.type == "EQUIPMENT"
+                                              ? Colors.green.shade800
+                                              : Colors.orange.shade800),
                                   ),
                                 ),
                               ),
