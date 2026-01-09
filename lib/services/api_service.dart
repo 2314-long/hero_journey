@@ -219,22 +219,39 @@ class ApiService {
     }
   }
 
-  // 3. 获取用户背包
+  // 返回 InventoryItem 对象列表
+  // 获取背包 (修复版：兼容 列表 和 Map 两种返回格式)
   Future<List<InventoryItem>> fetchInventory() async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/inventory'),
-        headers: await _getHeaders(), // ✅ 简化代码
+        headers: await _getHeaders(),
       );
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
-        return data.map((json) => InventoryItem.fromJson(json)).toList();
+        // 防止中文乱码
+        final dynamic data = jsonDecode(utf8.decode(response.bodyBytes));
+
+        List<dynamic> listData = [];
+
+        // 🔍 修复逻辑在这里：自动判断后端返回的是哪种格式
+        if (data is List) {
+          // 情况 1: 后端直接返回数组 [...]
+          listData = data;
+        } else if (data is Map && data['items'] != null) {
+          // 情况 2: 后端返回对象 { "items": [...] }
+          listData = data['items'];
+        }
+
+        // 开始转换模型
+        if (listData.isNotEmpty) {
+          return listData.map((e) => InventoryItem.fromJson(e)).toList();
+        }
       }
     } catch (e) {
-      print("背包加载失败: $e");
+      print("获取背包失败: $e");
     }
-    return [];
+    return []; // 失败或为空时返回空数组
   }
 
   // 4. 装备/卸下物品
@@ -269,5 +286,21 @@ class ApiService {
       print("使用物品失败: $e");
     }
     return null;
+  }
+
+  // ✝️ 复活请求
+  Future<bool> resurrect() async {
+    final response = await http.post(
+      // 👇 注意：这里要和 main.go 里的路径对应，是 /resurrect
+      Uri.parse('$baseUrl/resurrect'),
+      headers: await _getHeaders(),
+    );
+
+    if (response.statusCode == 200) {
+      return true;
+    } else {
+      print("复活失败: ${response.body}");
+      return false;
+    }
   }
 }
