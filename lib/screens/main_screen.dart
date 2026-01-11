@@ -35,6 +35,7 @@ class _MainScreenState extends State<MainScreen>
   int currentHp = 100;
   int maxHp = 100;
   int gold = 0;
+  bool _showDamageFlash = false;
 
   final Map<String, bool> _sectionExpandedState = {
     "进行中": true, // 默认展开
@@ -216,8 +217,18 @@ class _MainScreenState extends State<MainScreen>
       // 4. 受伤反馈
       if (currentHp < oldHp) {
         AudioService().playDamage();
-        HapticFeedback.heavyImpact();
-        _shakeController.forward();
+        // HapticFeedback.heavyImpact();
+        // _shakeController.forward();
+        _bossKey.currentState?.attack();
+        // 🔥 [新增] 屏幕闪红！
+        setState(() => _showDamageFlash = true);
+
+        // 300毫秒后消失，模拟瞬间受伤的感觉
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            setState(() => _showDamageFlash = false);
+          }
+        });
 
         if (mounted) {
           final damage = oldHp - currentHp;
@@ -877,6 +888,7 @@ class _MainScreenState extends State<MainScreen>
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -902,19 +914,20 @@ class _MainScreenState extends State<MainScreen>
               ]
             : null,
       ),
+      // 1. 最外层是震动组件 (保持不变)
       body: ShakeWidget(
         controller: _shakeController,
+        // 2. 这里的 Stack 用来叠加图层 (保持不变)
         child: Stack(
           children: [
+            // 第一层：页面主要内容
             SafeArea(
               child: _selectedIndex == 0
                   ? _buildHomePage()
-                  : ShopPage(
-                      gold: gold,
-                      onRefreshData: _loadData, // 购买后刷新
-                    ),
+                  : ShopPage(gold: gold, onRefreshData: _loadData),
             ),
-            // 彩带效果
+
+            // 第二层：左边彩带
             Align(
               alignment: Alignment.bottomLeft,
               child: ConfettiWidget(
@@ -924,6 +937,8 @@ class _MainScreenState extends State<MainScreen>
                 shouldLoop: false,
               ),
             ),
+
+            // 第三层：右边彩带
             Align(
               alignment: Alignment.bottomRight,
               child: ConfettiWidget(
@@ -931,6 +946,22 @@ class _MainScreenState extends State<MainScreen>
                 blastDirection: -pi * 2 / 3,
                 numberOfParticles: 30,
                 shouldLoop: false,
+              ),
+            ),
+
+            // 🔥 [新增] 第四层：全屏受伤红闪 (一定要放在最后，才能盖住所有内容)
+            IgnorePointer(
+              // IgnorePointer 确保这层颜色不会阻挡你点击下面的按钮
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200), // 渐变时间
+                curve: Curves.easeOut,
+                decoration: BoxDecoration(
+                  // 如果 _showDamageFlash 为 true，显示半透明红色
+                  // 否则显示透明
+                  color: _showDamageFlash
+                      ? Colors.red.withOpacity(0.3) // 30% 透明度的血色
+                      : Colors.transparent,
+                ),
               ),
             ),
           ],

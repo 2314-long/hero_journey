@@ -17,21 +17,22 @@ class BossStage extends StatefulWidget {
   State<BossStage> createState() => BossStageState();
 }
 
-class BossStageState extends State<BossStage>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  final List<Widget> _damagePopups = [];
+class BossStageState extends State<BossStage> with TickerProviderStateMixin {
+  late AnimationController _shakeCtrl;
+  late AnimationController _attackCtrl;
+  late Animation<double> _attackScale;
 
-  // 🔥 [新增] 用来控制是否显示受伤图片的状态
+  final List<Widget> _damagePopups = [];
   bool _isHurt = false;
-  // 🔥 [新增] 用来控制受伤状态恢复的定时器
   Timer? _hurtTimer;
+  bool _isAttacking = false;
 
   @override
   void initState() {
     super.initState();
-    // 震动动画控制器
-    _controller =
+
+    // 1. 震动控制器 (挨打)
+    _shakeCtrl =
         AnimationController(
           duration: const Duration(milliseconds: 100),
           vsync: this,
@@ -40,30 +41,40 @@ class BossStageState extends State<BossStage>
         )..addListener(() {
           setState(() {});
         });
+
+    // 2. 🔥 [核心修改] 攻击控制器：总时长加到 2 秒
+    _attackCtrl = AnimationController(
+      duration: const Duration(milliseconds: 2000),
+      vsync: this,
+    );
+
+    // 3. 🔥 [核心修改] 攻击动作改为三段式：猛扑 -> 悬停(最久) -> 缩回
+    _attackScale = TweenSequence<double>([
+      // 阶段1: 快速扑过来 (权重 15%)
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.6), weight: 15),
+      // 阶段2: 悬停在脸上吓唬你 (权重 70%) - 这就是让你看清的时候
+      TweenSequenceItem(tween: ConstantTween(1.6), weight: 70),
+      // 阶段3: 快速缩回去 (权重 15%)
+      TweenSequenceItem(tween: Tween(begin: 1.6, end: 1.0), weight: 15),
+    ]).animate(CurvedAnimation(parent: _attackCtrl, curve: Curves.easeInOut));
   }
 
   @override
   void dispose() {
-    _controller.dispose();
-    // 🔥 [新增] 销毁页面时一定要取消定时器，防止内存泄漏
+    _shakeCtrl.dispose();
+    _attackCtrl.dispose();
     _hurtTimer?.cancel();
     super.dispose();
   }
 
-  // 受击方法
   void hit(int damage) {
-    // 1. 重置定时器：如果上一次受伤还没恢复，先取消掉，重新开始计时
+    // 霸体状态：攻击时不能被打断
+    if (_isAttacking) return;
+
     _hurtTimer?.cancel();
+    setState(() => _isHurt = true);
+    _shakeCtrl.forward().then((_) => _shakeCtrl.reverse());
 
-    // 2. 切换状态：立刻变成受伤状态 (换图)
-    setState(() {
-      _isHurt = true;
-    });
-
-    // 3. 播放震动动画
-    _controller.forward().then((_) => _controller.reverse());
-
-    // 4. 添加伤害飘字 (逻辑不变)
     final key = UniqueKey();
     final popup = Positioned(
       key: key,
@@ -72,24 +83,35 @@ class BossStageState extends State<BossStage>
       child: DamageText(
         value: damage,
         onDone: () {
-          if (mounted) {
-            setState(() {
-              _damagePopups.removeWhere((element) => element.key == key);
-            });
-          }
+          if (mounted)
+            setState(() => _damagePopups.removeWhere((e) => e.key == key));
         },
       ),
     );
+    setState(() => _damagePopups.add(popup));
+
+    _hurtTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _isHurt = false);
+    });
+  }
+
+  // 🔥 [核心修改] Boss 攻击逻辑优化
+  void attack() {
+    // 1. 强制重置之前的状态
+    _hurtTimer?.cancel();
+    _attackCtrl.reset();
+
     setState(() {
-      _damagePopups.add(popup);
+      _isHurt = false;
+      _isAttacking = true; // 切换凶狠图
     });
 
-    // 5. 🔥 [新增] 设置定时器：800毫秒后变回普通状态
-    // 这里的 800ms 要和下面 DamageText 的动画时间差不多匹配
-    _hurtTimer = Timer(const Duration(milliseconds: 800), () {
+    // 2. 播放动画，并在结束后强制恢复
+    _attackCtrl.forward().then((_) {
+      // 当 2秒 动画播放完毕后，执行这里
       if (mounted) {
         setState(() {
-          _isHurt = false; // 变回帅气龙
+          _isAttacking = false; // 变回正常图
         });
       }
     });
@@ -100,6 +122,15 @@ class BossStageState extends State<BossStage>
     int monsterCurrentHp = widget.maxXp - widget.currentXp;
     if (monsterCurrentHp < 0) monsterCurrentHp = 0;
     double hpPercentage = monsterCurrentHp / widget.maxXp;
+
+    String currentImage;
+    if (_isAttacking) {
+      currentImage = 'assets/images/boss_dragon_attack.png';
+    } else if (_isHurt) {
+      currentImage = 'assets/images/boss_dragon_hurt.png';
+    } else {
+      currentImage = 'assets/images/boss_dragon.png';
+    }
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -138,39 +169,37 @@ class BossStageState extends State<BossStage>
               clipBehavior: Clip.none,
               alignment: Alignment.center,
               children: [
-                // 龙的图片 (底层)
                 GestureDetector(
-                  onTap: () => hit(10), // 点击测试
-                  child: Transform.rotate(
-                    angle: _controller.value,
-                    // 🔥 [核心修改] 根据 _isHurt 状态切换图片路径
-                    child: Image.asset(
-                      _isHurt
-                          ? 'assets/images/boss_dragon_hurt.png' // 受伤时的图片
-                          : 'assets/images/boss_dragon.png', // 平时的图片
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.none,
-                      // 添加一个简单的淡入淡出动画，让切换不那么生硬
-                      frameBuilder:
-                          (context, child, frame, wasSynchronouslyLoaded) {
-                            if (wasSynchronouslyLoaded) return child;
-                            return AnimatedOpacity(
-                              opacity: frame == null ? 0 : 1,
-                              duration: const Duration(milliseconds: 100),
-                              curve: Curves.easeOut,
-                              child: child,
-                            );
-                          },
+                  onTap: () => hit(10),
+                  child: ScaleTransition(
+                    scale: _attackScale,
+                    child: Transform.rotate(
+                      angle: _shakeCtrl.value,
+                      child: Image.asset(
+                        currentImage,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.none,
+                        // 简单的切换动效
+                        frameBuilder:
+                            (context, child, frame, wasSynchronouslyLoaded) {
+                              if (wasSynchronouslyLoaded) return child;
+                              return AnimatedOpacity(
+                                opacity: frame == null ? 0 : 1,
+                                duration: const Duration(milliseconds: 100),
+                                curve: Curves.easeOut,
+                                child: child,
+                              );
+                            },
+                      ),
                     ),
                   ),
                 ),
-                // 所有的飘字 (顶层)
                 ..._damagePopups,
               ],
             ),
           ),
           const SizedBox(height: 10),
-          // 血条部分保持不变
+          // 血条
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
