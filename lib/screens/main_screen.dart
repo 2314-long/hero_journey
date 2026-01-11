@@ -35,6 +35,12 @@ class _MainScreenState extends State<MainScreen>
   int maxHp = 100;
   int gold = 0;
 
+  final Map<String, bool> _sectionExpandedState = {
+    "进行中": true, // 默认展开
+    "已过期": true, // 默认展开
+    "已完成": false, // 默认收起
+  };
+
   // 虽然我们现在直接查背包，但这个变量保留用于 UI 显示（比如头部状态栏的小图标）
   bool hasResurrectionCross = false;
   bool hasSword = false;
@@ -724,18 +730,95 @@ class _MainScreenState extends State<MainScreen>
     bool isDoneSection = false,
     bool initiallyExpanded = true,
   }) {
+    // 确保 Map 里有初始值
+    if (!_sectionExpandedState.containsKey(title)) {
+      _sectionExpandedState[title] = initiallyExpanded;
+    }
+
+    bool isExpanded = _sectionExpandedState[title]!;
+
     return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      data: Theme.of(context).copyWith(
+        dividerColor: Colors.transparent, // 去掉原本的分割线
+      ),
       child: ExpansionTile(
+        key: PageStorageKey(title), // 保持滚动状态
         initiallyExpanded: initiallyExpanded,
-        title: Text(
-          "$title (${sectionTasks.length})",
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.bold,
-            decoration: isDoneSection ? TextDecoration.lineThrough : null,
-          ),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+
+        // 🔥 核心修改：自定义 Title 样式
+        title: Row(
+          children: [
+            // 1. 左侧垂直色条
+            Container(
+              width: 4,
+              height: 16,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8), // 间距
+            // 2. 标题文字
+            Text(
+              title,
+              style: TextStyle(
+                color: Colors.black87, // 标题统一用深色，显得更干净
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                decoration: isDoneSection ? TextDecoration.lineThrough : null,
+                decorationColor: Colors.grey,
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // 3. 数字徽标 (胶囊样式)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.1), // 浅灰色背景
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                "${sectionTasks.length}",
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+
+            // 4. 撑开空间，把箭头挤到最右边
+            const Spacer(),
+
+            // 5. 自定义箭头图标
+            Icon(
+              isExpanded
+                  ? Icons
+                        .keyboard_arrow_down_rounded // 展开时：向下
+                  : Icons.keyboard_arrow_left_rounded, // 合并时：向左 (按你要求)
+              // P.S. 如果想要常规风格，这里通常用 keyboard_arrow_right_rounded
+              color: Colors.grey.shade400,
+              size: 24,
+            ),
+          ],
         ),
+
+        // 隐藏原本自带的旋转箭头
+        trailing: const SizedBox.shrink(),
+
+        onExpansionChanged: (expanded) {
+          // 确保这一帧绘制完再刷新数据，避免冲突
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _sectionExpandedState[title] = expanded;
+              });
+            }
+          });
+        },
+
         children: sectionTasks
             .map(
               (task) => TaskTile(

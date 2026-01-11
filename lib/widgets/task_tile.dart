@@ -32,24 +32,18 @@ class _TaskTileState extends State<TaskTile> {
     _localIsDone = widget.task.isDone;
   }
 
-  // 🔥 [修复点 1] 强制同步：
-  // 之前那个 if (old != new) 是罪魁祸首！
-  // 因为父组件“拒绝”了修改，所以 old 和 new 都是 true，导致这里不执行，
-  // 结果 _localIsDone 还是 false (你点击后的状态)，于是 UI 就显示没钩了。
-  // 现在无论如何，都强制和父组件保持一致！
+  // 🔥 [核心修复逻辑保留] 强制同步
   @override
   void didUpdateWidget(covariant TaskTile oldWidget) {
     super.didUpdateWidget(oldWidget);
     _localIsDone = widget.task.isDone;
   }
 
-  // 🔥 [修复点 2] 拦截动画：
-  // 如果任务已经是完成状态，根本不要去动 _localIsDone，
-  // 这样 UI 连“闪一下”都不会有，直接通知父组件弹窗。
+  // 🔥 [核心修复逻辑保留] 拦截点击
   void _handleTap() async {
     if (widget.task.isDone) {
-      widget.onToggle(); // 直接喊父组件处理（弹窗）
-      return; // 自己什么都不做，UI 保持原样
+      widget.onToggle();
+      return;
     }
 
     if (_localIsDone != widget.task.isDone) return;
@@ -58,8 +52,7 @@ class _TaskTileState extends State<TaskTile> {
     widget.onToggle();
   }
 
-  // --- 下面的代码保持原样 ---
-
+  // --- 辅助函数保持不变 ---
   bool _isOverdue(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return false;
     try {
@@ -134,6 +127,7 @@ class _TaskTileState extends State<TaskTile> {
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
           decoration: BoxDecoration(
+            // ✅ [恢复原样] 完成时背景变灰
             color: _localIsDone ? Colors.grey.shade50 : colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
             border: isOverdue && !_localIsDone
@@ -142,6 +136,7 @@ class _TaskTileState extends State<TaskTile> {
                     width: 1.5,
                   )
                 : Border.all(color: Colors.transparent, width: 0),
+            // ✅ [恢复原样] 完成时没有阴影
             boxShadow: _localIsDone
                 ? []
                 : [
@@ -168,6 +163,7 @@ class _TaskTileState extends State<TaskTile> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // ✅ [保留] 文字样式：完成时变灰并加删除线
                         AnimatedDefaultTextStyle(
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeInOut,
