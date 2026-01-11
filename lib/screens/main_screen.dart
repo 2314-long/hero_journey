@@ -41,6 +41,7 @@ class _MainScreenState extends State<MainScreen>
     "已过期": true, // 默认展开
     "已完成": false, // 默认收起
   };
+  final GlobalKey<BossStageState> _bossKey = GlobalKey<BossStageState>();
 
   // 虽然我们现在直接查背包，但这个变量保留用于 UI 显示（比如头部状态栏的小图标）
   bool hasResurrectionCross = false;
@@ -447,7 +448,10 @@ class _MainScreenState extends State<MainScreen>
       }
     }
 
-    if (!task.isDone) AudioService().playSuccess();
+    if (!task.isDone) {
+      AudioService().playSuccess();
+      _bossKey.currentState?.hit(100);
+    }
 
     final int oldLevel = level;
 
@@ -684,7 +688,12 @@ class _MainScreenState extends State<MainScreen>
     return ListView(
       padding: const EdgeInsets.only(bottom: 80, top: 16),
       children: [
-        BossStage(level: level, currentXp: currentXp, maxXp: maxXp),
+        BossStage(
+          key: _bossKey,
+          level: level,
+          currentXp: currentXp,
+          maxXp: maxXp,
+        ),
         StatusHeader(
           currentHp: currentHp,
           maxHp: maxHp,
