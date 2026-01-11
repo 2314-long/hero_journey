@@ -6,6 +6,7 @@ class Task {
   String? deadline; // 允许为空
   bool isDone;
   bool punished;
+  int reward;
 
   Task({
     this.id,
@@ -13,6 +14,7 @@ class Task {
     this.deadline,
     this.isDone = false,
     this.punished = false,
+    this.reward = 100,
   });
 
   // 1. 从后端 JSON 解析 (核心修复点)
@@ -30,6 +32,7 @@ class Task {
       // 👆👆👆 修复结束 👆👆👆
       isDone: json['is_done'] ?? false,
       punished: json['is_punished'] ?? false,
+      reward: json['reward'] ?? 100,
     );
   }
 

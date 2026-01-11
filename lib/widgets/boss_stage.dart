@@ -5,12 +5,15 @@ class BossStage extends StatefulWidget {
   final int level;
   final int currentXp;
   final int maxXp;
+  // 🔥 回调：当点击宝箱时触发
+  final VoidCallback? onChestTap;
 
   const BossStage({
     super.key,
     required this.level,
     required this.currentXp,
     required this.maxXp,
+    this.onChestTap,
   });
 
   @override
@@ -23,15 +26,23 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
   late AnimationController _attackCtrl;
   late Animation<double> _attackScale;
 
+  // 🔥 [核心] 死亡动画控制器
+  late AnimationController _deathCtrl;
+  late Animation<double> _deathScale;
+  late Animation<double> _deathOpacity;
+
   final List<Widget> _damagePopups = [];
   bool _isHurt = false;
   Timer? _hurtTimer;
   bool _isAttacking = false;
 
+  // 🔥 [核心] 是否显示宝箱
+  bool _showChest = false;
+
   @override
   void initState() {
     super.initState();
-    // 1. 震动控制器 (挨打)
+    // 1. 震动 (挨打)
     _shakeCtrl =
         AnimationController(
           duration: const Duration(milliseconds: 100),
@@ -42,31 +53,72 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
           setState(() {});
         });
 
-    // 2. 攻击控制器 (咬人) - 时长 2 秒
+    // 2. 攻击 (咬人)
     _attackCtrl = AnimationController(
       duration: const Duration(milliseconds: 2000),
       vsync: this,
     );
-
-    // 3. 攻击动作：猛扑 -> 悬停(最久) -> 缩回
     _attackScale = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.6), weight: 15),
       TweenSequenceItem(tween: ConstantTween(1.6), weight: 70),
       TweenSequenceItem(tween: Tween(begin: 1.6, end: 1.0), weight: 15),
     ]).animate(CurvedAnimation(parent: _attackCtrl, curve: Curves.easeInOut));
+
+    // 3. 🔥 [核心] 死亡动画 (缩小 + 透明)
+    _deathCtrl = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _deathScale = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _deathCtrl, curve: Curves.easeInBack));
+    _deathOpacity = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _deathCtrl, curve: Curves.easeIn));
   }
 
   @override
   void dispose() {
     _shakeCtrl.dispose();
     _attackCtrl.dispose();
+    _deathCtrl.dispose(); // 记得销毁
     _hurtTimer?.cancel();
     super.dispose();
   }
 
+  // 🔥 [核心功能] Boss 死亡 -> 变宝箱
+  void die() {
+    if (_showChest) return;
+
+    // 播放死亡动画
+    _deathCtrl.forward().then((_) {
+      if (mounted) {
+        setState(() {
+          _showChest = true; // 动画播完，显示宝箱
+        });
+        // 重置动画状态，为下次出生做准备
+        _deathCtrl.reset();
+      }
+    });
+  }
+
+  // 🔥 [核心功能] 新 Boss 出生 (升级后调用)
+  void spawn() {
+    setState(() {
+      _showChest = false;
+      _damagePopups.clear();
+      _isHurt = false;
+      _isAttacking = false;
+    });
+    // 出生特效：震动一下
+    _shakeCtrl.forward().then((_) => _shakeCtrl.reverse());
+  }
+
   // 玩家打 Boss
   void hit(int damage) {
-    if (_isAttacking) return; // 霸体
+    if (_isAttacking || _showChest) return; // 攻击中或宝箱状态不能打
 
     _hurtTimer?.cancel();
     setState(() => _isHurt = true);
@@ -94,6 +146,7 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
 
   // Boss 打玩家
   void attack() {
+    if (_showChest) return;
     _hurtTimer?.cancel();
     _attackCtrl.reset();
 
@@ -111,8 +164,7 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
     });
   }
 
-  // 🔥 [核心功能] 根据等级给龙“染色”
-  // 🔥 [修复版] 去掉了会导致报错的 const
+  // 染色逻辑 (你的完美版修复)
   Widget _buildDragonWithColor(String imagePath) {
     int level = widget.level;
     Widget rawImage = Image.asset(
@@ -130,15 +182,12 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
       },
     );
 
-    // 1. 🟢 绿龙 (Lv 1-9)
     if (level < 10) {
       return ColorFiltered(
         colorFilter: const ColorFilter.mode(Colors.green, BlendMode.modulate),
         child: rawImage,
       );
-    }
-    // 2. 🔵 蓝龙 (Lv 10-19)
-    else if (level < 20) {
+    } else if (level < 20) {
       return ColorFiltered(
         colorFilter: const ColorFilter.mode(
           Colors.cyanAccent,
@@ -146,13 +195,9 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
         ),
         child: rawImage,
       );
-    }
-    // 3. 🟣 紫龙 (Lv 20-29)
-    else if (level < 30) {
+    } else if (level < 30) {
       return rawImage;
-    }
-    // 4. 🔴 红龙 (Lv 30-39)
-    else if (level < 40) {
+    } else if (level < 40) {
       return ColorFiltered(
         colorFilter: const ColorFilter.mode(
           Colors.redAccent,
@@ -160,9 +205,7 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
         ),
         child: rawImage,
       );
-    }
-    // 5. ⚫ 黑龙 (Lv 40-49)
-    else if (level < 50) {
+    } else if (level < 50) {
       return ColorFiltered(
         colorFilter: const ColorFilter.matrix(<double>[
           0.2126,
@@ -191,9 +234,8 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
           child: rawImage,
         ),
       );
-    }
-    // 6. 🌈 彩龙 (Lv 50-59)
-    else if (level < 60) {
+    } else if (level < 60) {
+      // 🌈 彩龙修复版：modulate 模式
       return ShaderMask(
         shaderCallback: (Rect bounds) {
           return const LinearGradient(
@@ -210,25 +252,35 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
             tileMode: TileMode.mirror,
           ).createShader(bounds);
         },
-        // 🔥 核心修改：改为 modulate (乘法)
-        // 它可以完美保留透明背景，彻底消除那个方形色块！
-        blendMode: BlendMode.modulate,
-
-        // 配合修改：先把龙变成“高亮灰白”，作为底色
-        // 这样彩虹色叠上去才会鲜艳，同时保留黑色阴影细节
+        blendMode: BlendMode.modulate, // 修复背景框问题
         child: ColorFiltered(
           colorFilter: const ColorFilter.matrix(<double>[
-            1.5, 1.5, 1.5, 0, 0, // R 提亮
-            1.5, 1.5, 1.5, 0, 0, // G 提亮
-            1.5, 1.5, 1.5, 0, 0, // B 提亮
-            0, 0, 0, 1, 0, // Alpha 不变
+            1.5,
+            1.5,
+            1.5,
+            0,
+            0,
+            1.5,
+            1.5,
+            1.5,
+            0,
+            0,
+            1.5,
+            1.5,
+            1.5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
           ]),
           child: rawImage,
         ),
       );
-    }
-    // 7. ⚪ 白龙 (Lv 60+)
-    else {
+    } else {
+      // ⚪ 白龙修复版
       return ColorFiltered(
         colorFilter: const ColorFilter.matrix(<double>[
           1.2,
@@ -257,8 +309,8 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
     }
   }
 
-  // 获取 Boss 称号
   String _getBossTitle() {
+    if (_showChest) return "🎉 关卡完成！点击宝箱领取奖励";
     if (widget.level < 10) return "第 ${widget.level} 关 - 剧毒绿龙";
     if (widget.level < 20) return "第 ${widget.level} 关 - 冰霜蓝龙";
     if (widget.level < 30) return "第 ${widget.level} 关 - 虚空紫龙";
@@ -270,9 +322,11 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    int monsterCurrentHp = widget.maxXp - widget.currentXp;
+    int monsterCurrentHp = _showChest ? 0 : (widget.maxXp - widget.currentXp);
     if (monsterCurrentHp < 0) monsterCurrentHp = 0;
-    double hpPercentage = monsterCurrentHp / widget.maxXp;
+    double hpPercentage = widget.maxXp == 0
+        ? 0
+        : monsterCurrentHp / widget.maxXp;
 
     String currentImage;
     if (_isAttacking) {
@@ -283,7 +337,6 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
       currentImage = 'assets/images/boss_dragon.png';
     }
 
-    // 🔥 修复点：最外层是纯净的 Container，背景色绝对不会变绿
     return Container(
       padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -294,6 +347,7 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
           colors: [Colors.indigo.shade900, Colors.deepPurple.shade900],
         ),
         borderRadius: BorderRadius.circular(20),
+        // 🔥 移除了边框，保持无边框设计
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.4),
@@ -322,17 +376,40 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
               clipBehavior: Clip.none,
               alignment: Alignment.center,
               children: [
-                GestureDetector(
-                  onTap: () => hit(10),
-                  child: ScaleTransition(
-                    scale: _attackScale,
-                    child: Transform.rotate(
-                      angle: _shakeCtrl.value,
-                      // 🔥 修复点：只给龙的图片这一小块区域上色
-                      child: _buildDragonWithColor(currentImage),
-                    ),
-                  ),
-                ),
+                // 🔥 [核心逻辑] 根据状态切换：宝箱 还是 龙
+                _showChest
+                    ? GestureDetector(
+                        onTap: widget.onChestTap, // 点击触发回调
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.5, end: 1.0),
+                          duration: const Duration(milliseconds: 500),
+                          curve: Curves.elasticOut,
+                          builder: (context, value, child) =>
+                              Transform.scale(scale: value, child: child),
+                          child: Image.asset(
+                            'assets/images/chest.png',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      )
+                    : GestureDetector(
+                        onTap: () => hit(10),
+                        child: FadeTransition(
+                          // 死亡淡出
+                          opacity: _deathOpacity,
+                          child: ScaleTransition(
+                            // 死亡缩小
+                            scale: _deathScale,
+                            child: ScaleTransition(
+                              scale: _attackScale,
+                              child: Transform.rotate(
+                                angle: _shakeCtrl.value,
+                                child: _buildDragonWithColor(currentImage),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                 ..._damagePopups,
               ],
             ),
@@ -378,7 +455,7 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
   }
 }
 
-// 伤害飘字组件
+// 伤害飘字组件 (保持不变)
 class DamageText extends StatefulWidget {
   final int value;
   final VoidCallback onDone;

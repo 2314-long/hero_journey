@@ -413,42 +413,109 @@ class _MainScreenState extends State<MainScreen>
   // --- 其他辅助函数 (保持原样) ---
 
   void _checkLevelUp() {
-    if (currentXp >= maxXp) {
-      AudioService().playLevelUp();
-      _controllerLeft.play();
-      _controllerRight.play();
+    // 这个方法改名为 _handleLevelUp 更好，对应 onChestTap
+    // 如果你之前的参数名叫 onChestTap: _checkLevelUp，请修改这里的内容
 
-      currentXp -= maxXp;
-      level++;
-      maxHp += 10;
-      currentHp = maxHp;
-      _saveData();
+    AudioService().playSuccess(); // 点击宝箱的音效
 
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => LevelUpDialog(level: level),
-      );
-    }
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.indigo.shade900,
+        title: const Center(
+          child: Text(
+            "🎉 升级！",
+            style: TextStyle(
+              color: Colors.amber,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 宝箱打开的图标
+            const Icon(Icons.stars_rounded, color: Colors.amber, size: 60),
+            const SizedBox(height: 16),
+            // 显示下个等级
+            Text(
+              "恭喜提升到 Lv.${level + 1}",
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "生命上限 +10\nHP 已完全恢复",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+            ),
+            onPressed: () {
+              Navigator.of(context).pop(); // 关闭弹窗
+
+              // 🔥 [核心] 在这里执行真正的数据升级
+              setState(() {
+                level++; // 等级 +1
+                currentXp = currentXp - maxXp; // 扣除升级经验
+                if (currentXp < 0) currentXp = 0;
+
+                // 属性提升
+                maxHp += 10;
+                currentHp = maxHp; // 升级回满血
+
+                // 播放庆祝彩带
+                _controllerLeft.play();
+                _controllerRight.play();
+                AudioService().playLevelUp();
+              });
+
+              // 保存并同步数据
+              _saveData();
+
+              // 🔥 召唤新 Boss
+              _bossKey.currentState?.spawn();
+            },
+            child: const Text(
+              "太棒了！",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void toggleTask(Task task) async {
+    // 1. 拦截已完成任务
     if (task.isDone) {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar(); // (可选) 隐藏之前的提示，防堆叠
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("🚫 任务完成后不可撤销！"), // 提示文字
+          content: Text("🚫 任务完成后不可撤销！"),
           duration: Duration(seconds: 1),
           backgroundColor: Colors.grey,
         ),
       );
       setState(() {
-        task.isDone = true; // 显式地确认它是完成状态
+        task.isDone = true;
       });
-      // 🛑 关键点：必须加 return！
-      // 如果没有这句，程序会继续往下跑，导致勾选框发生变化
       return;
     }
+
+    // 2. 拦截过期任务
     if (task.deadline != null) {
       final due = DateTime.parse(task.deadline!);
       if (DateTime.now().isAfter(due) && !task.isDone) {
@@ -459,10 +526,53 @@ class _MainScreenState extends State<MainScreen>
       }
     }
 
+    // 3. 核心逻辑
     if (!task.isDone) {
-      AudioService().playSuccess();
-      _bossKey.currentState?.hit(100);
+      int reward = task.reward; // 🔥 确保这里的数值是你想要的单次伤害
+
+      // --- 💀 情况 A: 击杀 Boss (经验溢出) ---
+      if (currentXp + reward >= maxXp) {
+        // 3.1 视觉上加满经验
+        setState(() {
+          currentXp += reward;
+        });
+        AudioService().playSuccess();
+
+        // 3.2 播放死亡动画 -> 变宝箱
+        _bossKey.currentState?.die();
+
+        // 3.3 手动更新任务状态
+        setState(() {
+          task.isDone = true;
+          if (task.id != null) {
+            NotificationService().cancelNotification(task.id!);
+          }
+        });
+
+        // 3.4 告诉后端任务完成
+        await ApiService().updateTask(task);
+        _saveData();
+
+        // 🛑🛑🛑 [核心修复点] 🛑🛑🛑
+        // 必须在这里 RETURN！强制结束函数！
+        // 这样才不会执行下面的 _loadData()，从而防止直接弹出升级窗
+        return;
+      }
+      // --- ⚔️ 情况 B: 普通攻击 (经验未满) ---
+      else {
+        setState(() {
+          currentXp += reward;
+        });
+        AudioService().playSuccess();
+
+        // 🔥 [修复数值不一致]
+        // 之前你写的是 hit(100)，现在改成 hit(reward)
+        // 这样显示的红字就是 -50 了
+        _bossKey.currentState?.hit(reward);
+      }
     }
+
+    // --- 下面的代码只有在 [普通攻击] 时才会运行 ---
 
     final int oldLevel = level;
 
@@ -483,7 +593,9 @@ class _MainScreenState extends State<MainScreen>
         ).showSnackBar(const SnackBar(content: Text("⚠️ 同步失败，请检查网络")));
       }
     } else {
-      await _loadData(); // 等待后端计算奖励
+      await _loadData(); // 刷新数据
+
+      // 普通升级检测（防止意外情况）
       if (level > oldLevel) {
         AudioService().playLevelUp();
         _controllerLeft.play();
@@ -704,6 +816,7 @@ class _MainScreenState extends State<MainScreen>
           level: level,
           currentXp: currentXp,
           maxXp: maxXp,
+          onChestTap: _checkLevelUp,
         ),
         StatusHeader(
           currentHp: currentHp,
