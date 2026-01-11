@@ -37,6 +37,8 @@ class _MainScreenState extends State<MainScreen>
 
   // 虽然我们现在直接查背包，但这个变量保留用于 UI 显示（比如头部状态栏的小图标）
   bool hasResurrectionCross = false;
+  bool hasSword = false;
+  bool hasShield = false;
 
   // 🔥 [新增] 全局背包列表，确保逻辑能随时访问最新数据
   List<InventoryItem> inventory = [];
@@ -144,15 +146,29 @@ class _MainScreenState extends State<MainScreen>
 
       // --- 检查十字架 (用于 UI 显示) ---
       bool foundCross = false;
+      bool foundSword = false; // 新增
+      bool foundShield = false;
       for (var item in apiInventory) {
-        // 这里假设 item.name 是 "复活十字架" 或者 item.item.effectType == 'REVIVE'
-        if ((item.item.name == '复活十字架' || item.item.effectType == 'REVIVE') &&
-            item.quantity > 0) {
+        // 1. 检查复活十字架 (逻辑不变，只要有就显示，不需要穿戴)
+        if (item.item.effectType == 'RESURRECT' && item.quantity > 0) {
           foundCross = true;
-          break;
+        }
+
+        // 2. 检查剑 (必须是 已装备 + 攻击类)
+        if (item.isEquipped && item.item.effectType == 'GOLD_BOOST') {
+          foundSword = true;
+        }
+
+        // 3. 检查盾 (必须是 已装备 + 防御类)
+        if (item.isEquipped && item.item.effectType == 'DMG_REDUCE') {
+          foundShield = true;
         }
       }
+
+      // 更新状态
       hasResurrectionCross = foundCross;
+      hasSword = foundSword; // 新增
+      hasShield = foundShield; // 新增
 
       // --- 更新任务 ---
       if (apiTasks.isNotEmpty) {
@@ -398,6 +414,22 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void toggleTask(Task task) async {
+    if (task.isDone) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar(); // (可选) 隐藏之前的提示，防堆叠
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("🚫 任务完成后不可撤销！"), // 提示文字
+          duration: Duration(seconds: 1),
+          backgroundColor: Colors.grey,
+        ),
+      );
+      setState(() {
+        task.isDone = true; // 显式地确认它是完成状态
+      });
+      // 🛑 关键点：必须加 return！
+      // 如果没有这句，程序会继续往下跑，导致勾选框发生变化
+      return;
+    }
     if (task.deadline != null) {
       final due = DateTime.parse(task.deadline!);
       if (DateTime.now().isAfter(due) && !task.isDone) {
@@ -653,6 +685,8 @@ class _MainScreenState extends State<MainScreen>
           currentXp: currentXp,
           maxXp: maxXp,
           hasResurrectionCross: hasResurrectionCross,
+          hasSword: hasSword,
+          hasShield: hasShield,
         ),
         if (tasks.isEmpty)
           const Padding(

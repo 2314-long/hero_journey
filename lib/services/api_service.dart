@@ -9,9 +9,9 @@ import 'storage_service.dart';
 class ApiService {
   // 1. 基础配置
   // Android 模拟器用 10.0.2.2，真机调试请换成电脑局域网 IP
-  // static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
-  // 真机URL
-  static const String baseUrl = "http://10.82.169.168:8080/api/v1";
+  static const String baseUrl = 'http://10.0.2.2:8080/api/v1';
+  // 真机URL,会根据网络变化
+  // static const String baseUrl = "http://10.82.169.168:8080/api/v1";
 
   // 移除 static _token 和 init()，因为我们现在每次都从 StorageService 读，保证最新
   // 移除 Map<String, String> get _headers ...

@@ -7,7 +7,7 @@ class TaskTile extends StatefulWidget {
   final Task task;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
-  final Future<bool> Function() onConfirmDelete; // [必须] 这是一个返回 Future<bool> 的函数
+  final Future<bool> Function() onConfirmDelete;
   final VoidCallback onEdit;
 
   const TaskTile({
@@ -32,20 +32,33 @@ class _TaskTileState extends State<TaskTile> {
     _localIsDone = widget.task.isDone;
   }
 
+  // 🔥 [修复点 1] 强制同步：
+  // 之前那个 if (old != new) 是罪魁祸首！
+  // 因为父组件“拒绝”了修改，所以 old 和 new 都是 true，导致这里不执行，
+  // 结果 _localIsDone 还是 false (你点击后的状态)，于是 UI 就显示没钩了。
+  // 现在无论如何，都强制和父组件保持一致！
   @override
   void didUpdateWidget(covariant TaskTile oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.task.isDone != widget.task.isDone) {
-      _localIsDone = widget.task.isDone;
-    }
+    _localIsDone = widget.task.isDone;
   }
 
+  // 🔥 [修复点 2] 拦截动画：
+  // 如果任务已经是完成状态，根本不要去动 _localIsDone，
+  // 这样 UI 连“闪一下”都不会有，直接通知父组件弹窗。
   void _handleTap() async {
+    if (widget.task.isDone) {
+      widget.onToggle(); // 直接喊父组件处理（弹窗）
+      return; // 自己什么都不做，UI 保持原样
+    }
+
     if (_localIsDone != widget.task.isDone) return;
     setState(() => _localIsDone = !_localIsDone);
     await Future.delayed(const Duration(milliseconds: 500));
     widget.onToggle();
   }
+
+  // --- 下面的代码保持原样 ---
 
   bool _isOverdue(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return false;
@@ -81,13 +94,10 @@ class _TaskTileState extends State<TaskTile> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Slidable(
         key: ValueKey(widget.task.id),
-
-        // --- 核心修复区域 ---
         endActionPane: ActionPane(
           motion: const DrawerMotion(),
           dismissible: DismissiblePane(
-            onDismissed: () => widget.onDelete(), // 只有 confirm 返回 true 后，才会执行这里
-            // 🔥 [关键] 必须实现这个！它会暂停动画，等待弹窗结果
+            onDismissed: () => widget.onDelete(),
             confirmDismiss: () async {
               return await widget.onConfirmDelete();
             },
@@ -105,10 +115,9 @@ class _TaskTileState extends State<TaskTile> {
             ),
             SlidableAction(
               onPressed: (context) async {
-                // 按钮点击也要走确认流程
                 final confirm = await widget.onConfirmDelete();
                 if (confirm) {
-                  widget.onDelete(); // 如果确认，再执行删除
+                  widget.onDelete();
                 }
               },
               backgroundColor: Colors.red.shade100,
@@ -121,8 +130,6 @@ class _TaskTileState extends State<TaskTile> {
             ),
           ],
         ),
-
-        // --- 核心修复结束 ---
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,

@@ -8,6 +8,8 @@ class StatusHeader extends StatelessWidget {
   final int currentXp;
   final int maxXp;
   final bool hasResurrectionCross;
+  final bool hasSword;
+  final bool hasShield;
 
   const StatusHeader({
     super.key,
@@ -17,197 +19,245 @@ class StatusHeader extends StatelessWidget {
     required this.level,
     required this.currentXp,
     required this.maxXp,
-    this.hasResurrectionCross = false,
+    required this.hasResurrectionCross,
+    this.hasSword = false,
+    this.hasShield = false,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Card(
-      // 使用 Card 组件，自动应用 main.dart 里定义的圆角和阴影
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      elevation: 8, // 更高的层级，让它浮起来
-      shadowColor: colorScheme.primary.withOpacity(0.3),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          // 现代感的核心：漂亮的蓝紫色渐变背景
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              colorScheme.primary,
-              colorScheme.tertiary, // 使用主题中的第三色构建渐变
-            ],
-          ),
+  // ✨ 调整后的图标构建器：更大、更清晰
+  Widget _buildStatusIcon(IconData icon, Color color) {
+    return Container(
+      margin: const EdgeInsets.only(left: 8), // 间距加大，不显得拥挤
+      padding: const EdgeInsets.all(6), // 背景圈大一点
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15), // 背景稍微淡一点，突出图标
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withOpacity(0.2), // 加个淡淡的边框，更有质感
+          width: 1,
         ),
-        child: Column(
-          children: [
-            // --- 第一行：等级、金币 ---
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    // 等级徽章
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.5),
-                          width: 1,
-                        ),
-                      ),
-                      child: Text(
-                        "Lv.$level",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 18,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    if (hasResurrectionCross) ...[
-                      const SizedBox(width: 12),
-                      Tooltip(
-                        message: "复活十字架生效中",
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.purple.shade800.withOpacity(0.5),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.auto_awesome,
-                            color: Colors.amberAccent,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                // 金币显示
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.monetization_on_rounded,
-                        color: Colors.amber,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        "$gold",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.amberAccent,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // --- 血条部分 ---
-            _buildProgressBar(
-              context: context,
-              label: "HP",
-              value: currentHp,
-              maxValue: maxHp,
-              color: currentHp < (maxHp * 0.3)
-                  ? Colors.redAccent
-                  : const Color(0xFF4ADE80), // 现代感的绿色
-              icon: Icons.favorite_rounded,
-            ),
-
-            const SizedBox(height: 12),
-
-            // --- 经验条部分 ---
-            _buildProgressBar(
-              context: context,
-              label: "XP",
-              value: currentXp,
-              maxValue: maxXp,
-              color: Colors.lightBlueAccent,
-              icon: Icons.bolt_rounded,
-            ),
-          ],
-        ),
+      ),
+      child: Icon(
+        icon,
+        size: 20, // 🔥 从 14 改为 20，清晰度大幅提升
+        color: color,
       ),
     );
   }
 
-  // 封装一个构建进度条的组件
-  Widget _buildProgressBar({
-    required BuildContext context,
-    required String label,
-    required int value,
-    required int maxValue,
-    required Color color,
-    required IconData icon,
-  }) {
-    double percentage = maxValue > 0 ? value / maxValue : 0;
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: Colors.white.withOpacity(0.9), size: 16),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                ),
-              ],
-            ),
-            Text(
-              "$value / $maxValue",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.white.withOpacity(0.9),
-              ),
-            ),
-          ],
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF6C63FF), Color(0xFF4834DF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        const SizedBox(height: 6),
-        // 更粗、更圆润的进度条
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: SizedBox(
-            height: 14, // 增加高度
-            child: LinearProgressIndicator(
-              value: percentage,
-              color: color,
-              // 背景色使用半透明白色
-              backgroundColor: Colors.white.withOpacity(0.2),
-            ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF6C63FF).withOpacity(0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 8),
           ),
-        ),
-      ],
+        ],
+      ),
+      child: Column(
+        children: [
+          // --- 第一行：等级 + 状态图标 + 金币 ---
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // 左侧：等级胶囊 + 状态图标栏
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center, // 垂直居中对齐
+                children: [
+                  // 等级胶囊
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      "Lv.$level",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18, // 等级文字也稍微大一点点
+                      ),
+                    ),
+                  ),
+
+                  // 🔥 图标区：不需要 SizedBox，margin 已经处理了间距
+                  if (hasResurrectionCross)
+                    _buildStatusIcon(
+                      Icons.health_and_safety,
+                      const Color(0xFFE040FB),
+                    ), // 紫色更亮一点
+
+                  if (hasSword)
+                    _buildStatusIcon(
+                      Icons.colorize,
+                      const Color(0xFF40C4FF),
+                    ), // 蓝色更亮一点
+
+                  if (hasShield)
+                    _buildStatusIcon(
+                      Icons.security,
+                      const Color(0xFFFFAB40),
+                    ), // 橙色更亮一点
+                ],
+              ),
+
+              // 右侧：金币
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.monetization_on,
+                      color: Colors.amber,
+                      size: 20, // 金币图标也同步放大
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      "$gold",
+                      style: const TextStyle(
+                        color: Colors.amber,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18, // 金币文字也同步放大
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24), // 间距稍微拉大，更透气
+          // --- 第二行：HP 条 ---
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.favorite,
+                        color: Colors.white.withOpacity(0.9),
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        "HP",
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    "$currentHp / $maxHp",
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(1.0),
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6), // 圆角加大
+                child: LinearProgressIndicator(
+                  value: maxHp > 0 ? currentHp / maxHp : 0,
+                  backgroundColor: Colors.black.withOpacity(0.2),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    currentHp < maxHp * 0.3
+                        ? const Color(0xFFFF5252)
+                        : const Color(0xFF00E676),
+                  ),
+                  minHeight: 10, // 进度条稍微加粗
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // --- 第三行：XP 条 ---
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.flash_on,
+                        color: Colors.white.withOpacity(0.7),
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        "XP",
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    "$currentXp / $maxXp",
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: maxXp > 0 ? currentXp / maxXp : 0,
+                  backgroundColor: Colors.black.withOpacity(0.2),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Color(0xFF4DD0E1),
+                  ),
+                  minHeight: 8, // 进度条稍微加粗
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
