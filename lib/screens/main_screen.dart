@@ -20,6 +20,7 @@ import '../services/notification_service.dart';
 import '../services/audio_service.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
+import '../widgets/boss_stage.dart'; // 别忘了引入
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -683,6 +684,7 @@ class _MainScreenState extends State<MainScreen>
     return ListView(
       padding: const EdgeInsets.only(bottom: 80, top: 16),
       children: [
+        BossStage(level: level, currentXp: currentXp, maxXp: maxXp),
         StatusHeader(
           currentHp: currentHp,
           maxHp: maxHp,

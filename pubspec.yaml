@@ -100,6 +100,7 @@ flutter:
   # see https://flutter.dev/to/font-from-package
   assets:
     - assets/audio/
+    - assets/images/
 flutter_launcher_icons:
   android: true
   ios: true
