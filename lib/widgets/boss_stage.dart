@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'dart:async'; // 🔥 [新增] 需要引入 async 库来使用 Timer
+import 'dart:async';
 
 class BossStage extends StatefulWidget {
   final int level;
@@ -18,6 +18,7 @@ class BossStage extends StatefulWidget {
 }
 
 class BossStageState extends State<BossStage> with TickerProviderStateMixin {
+  // 动画控制器
   late AnimationController _shakeCtrl;
   late AnimationController _attackCtrl;
   late Animation<double> _attackScale;
@@ -30,7 +31,6 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-
     // 1. 震动控制器 (挨打)
     _shakeCtrl =
         AnimationController(
@@ -42,19 +42,16 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
           setState(() {});
         });
 
-    // 2. 🔥 [核心修改] 攻击控制器：总时长加到 2 秒
+    // 2. 攻击控制器 (咬人) - 时长 2 秒
     _attackCtrl = AnimationController(
       duration: const Duration(milliseconds: 2000),
       vsync: this,
     );
 
-    // 3. 🔥 [核心修改] 攻击动作改为三段式：猛扑 -> 悬停(最久) -> 缩回
+    // 3. 攻击动作：猛扑 -> 悬停(最久) -> 缩回
     _attackScale = TweenSequence<double>([
-      // 阶段1: 快速扑过来 (权重 15%)
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.6), weight: 15),
-      // 阶段2: 悬停在脸上吓唬你 (权重 70%) - 这就是让你看清的时候
       TweenSequenceItem(tween: ConstantTween(1.6), weight: 70),
-      // 阶段3: 快速缩回去 (权重 15%)
       TweenSequenceItem(tween: Tween(begin: 1.6, end: 1.0), weight: 15),
     ]).animate(CurvedAnimation(parent: _attackCtrl, curve: Curves.easeInOut));
   }
@@ -67,9 +64,9 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  // 玩家打 Boss
   void hit(int damage) {
-    // 霸体状态：攻击时不能被打断
-    if (_isAttacking) return;
+    if (_isAttacking) return; // 霸体
 
     _hurtTimer?.cancel();
     setState(() => _isHurt = true);
@@ -95,26 +92,180 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
     });
   }
 
-  // 🔥 [核心修改] Boss 攻击逻辑优化
+  // Boss 打玩家
   void attack() {
-    // 1. 强制重置之前的状态
     _hurtTimer?.cancel();
     _attackCtrl.reset();
 
     setState(() {
       _isHurt = false;
-      _isAttacking = true; // 切换凶狠图
+      _isAttacking = true;
     });
 
-    // 2. 播放动画，并在结束后强制恢复
     _attackCtrl.forward().then((_) {
-      // 当 2秒 动画播放完毕后，执行这里
       if (mounted) {
         setState(() {
-          _isAttacking = false; // 变回正常图
+          _isAttacking = false;
         });
       }
     });
+  }
+
+  // 🔥 [核心功能] 根据等级给龙“染色”
+  // 🔥 [修复版] 去掉了会导致报错的 const
+  Widget _buildDragonWithColor(String imagePath) {
+    int level = widget.level;
+    Widget rawImage = Image.asset(
+      imagePath,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.none,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded) return child;
+        return AnimatedOpacity(
+          opacity: frame == null ? 0 : 1,
+          duration: const Duration(milliseconds: 100),
+          curve: Curves.easeOut,
+          child: child,
+        );
+      },
+    );
+
+    // 1. 🟢 绿龙 (Lv 1-9)
+    if (level < 10) {
+      return ColorFiltered(
+        colorFilter: const ColorFilter.mode(Colors.green, BlendMode.modulate),
+        child: rawImage,
+      );
+    }
+    // 2. 🔵 蓝龙 (Lv 10-19)
+    else if (level < 20) {
+      return ColorFiltered(
+        colorFilter: const ColorFilter.mode(
+          Colors.cyanAccent,
+          BlendMode.modulate,
+        ),
+        child: rawImage,
+      );
+    }
+    // 3. 🟣 紫龙 (Lv 20-29)
+    else if (level < 30) {
+      return rawImage;
+    }
+    // 4. 🔴 红龙 (Lv 30-39)
+    else if (level < 40) {
+      return ColorFiltered(
+        colorFilter: const ColorFilter.mode(
+          Colors.redAccent,
+          BlendMode.modulate,
+        ),
+        child: rawImage,
+      );
+    }
+    // 5. ⚫ 黑龙 (Lv 40-49)
+    else if (level < 50) {
+      return ColorFiltered(
+        colorFilter: const ColorFilter.matrix(<double>[
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0.2126,
+          0.7152,
+          0.0722,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+        ]),
+        child: ColorFiltered(
+          colorFilter: const ColorFilter.mode(Colors.grey, BlendMode.modulate),
+          child: rawImage,
+        ),
+      );
+    }
+    // 6. 🌈 彩龙 (Lv 50-59)
+    else if (level < 60) {
+      return ShaderMask(
+        shaderCallback: (Rect bounds) {
+          return const LinearGradient(
+            colors: [
+              Colors.red,
+              Colors.orange,
+              Colors.yellow,
+              Colors.green,
+              Colors.blue,
+              Colors.purple,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            tileMode: TileMode.mirror,
+          ).createShader(bounds);
+        },
+        // 🔥 核心修改：改为 modulate (乘法)
+        // 它可以完美保留透明背景，彻底消除那个方形色块！
+        blendMode: BlendMode.modulate,
+
+        // 配合修改：先把龙变成“高亮灰白”，作为底色
+        // 这样彩虹色叠上去才会鲜艳，同时保留黑色阴影细节
+        child: ColorFiltered(
+          colorFilter: const ColorFilter.matrix(<double>[
+            1.5, 1.5, 1.5, 0, 0, // R 提亮
+            1.5, 1.5, 1.5, 0, 0, // G 提亮
+            1.5, 1.5, 1.5, 0, 0, // B 提亮
+            0, 0, 0, 1, 0, // Alpha 不变
+          ]),
+          child: rawImage,
+        ),
+      );
+    }
+    // 7. ⚪ 白龙 (Lv 60+)
+    else {
+      return ColorFiltered(
+        colorFilter: const ColorFilter.matrix(<double>[
+          1.2,
+          1.2,
+          1.2,
+          0,
+          30,
+          1.2,
+          1.2,
+          1.2,
+          0,
+          30,
+          1.2,
+          1.2,
+          1.2,
+          0,
+          30,
+          0,
+          0,
+          0,
+          1,
+          0,
+        ]),
+        child: rawImage,
+      );
+    }
+  }
+
+  // 获取 Boss 称号
+  String _getBossTitle() {
+    if (widget.level < 10) return "第 ${widget.level} 关 - 剧毒绿龙";
+    if (widget.level < 20) return "第 ${widget.level} 关 - 冰霜蓝龙";
+    if (widget.level < 30) return "第 ${widget.level} 关 - 虚空紫龙";
+    if (widget.level < 40) return "第 ${widget.level} 关 - 烈焰红龙";
+    if (widget.level < 50) return "第 ${widget.level} 关 - 深渊黑龙";
+    if (widget.level < 60) return "第 ${widget.level} 关 - 元素彩龙";
+    return "第 ${widget.level} 关 - 光辉白龙";
   }
 
   @override
@@ -132,6 +283,7 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
       currentImage = 'assets/images/boss_dragon.png';
     }
 
+    // 🔥 修复点：最外层是纯净的 Container，背景色绝对不会变绿
     return Container(
       padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -153,7 +305,7 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
       child: Column(
         children: [
           Text(
-            "第 ${widget.level} 关 - 恶龙巢穴",
+            _getBossTitle(),
             style: const TextStyle(
               color: Colors.white70,
               fontSize: 14,
@@ -162,6 +314,7 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
             ),
           ),
           const SizedBox(height: 10),
+
           SizedBox(
             height: 120,
             width: 120,
@@ -175,22 +328,8 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
                     scale: _attackScale,
                     child: Transform.rotate(
                       angle: _shakeCtrl.value,
-                      child: Image.asset(
-                        currentImage,
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.none,
-                        // 简单的切换动效
-                        frameBuilder:
-                            (context, child, frame, wasSynchronouslyLoaded) {
-                              if (wasSynchronouslyLoaded) return child;
-                              return AnimatedOpacity(
-                                opacity: frame == null ? 0 : 1,
-                                duration: const Duration(milliseconds: 100),
-                                curve: Curves.easeOut,
-                                child: child,
-                              );
-                            },
-                      ),
+                      // 🔥 修复点：只给龙的图片这一小块区域上色
+                      child: _buildDragonWithColor(currentImage),
                     ),
                   ),
                 ),
@@ -198,6 +337,7 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
               ],
             ),
           ),
+
           const SizedBox(height: 10),
           // 血条
           Column(
@@ -238,7 +378,7 @@ class BossStageState extends State<BossStage> with TickerProviderStateMixin {
   }
 }
 
-// 伤害飘字组件 (稍微调整了动画时间，让它更快一点，配合换图)
+// 伤害飘字组件
 class DamageText extends StatefulWidget {
   final int value;
   final VoidCallback onDone;
@@ -258,7 +398,6 @@ class _DamageTextState extends State<DamageText>
   @override
   void initState() {
     super.initState();
-    // 🔥 [微调] 动画时间从 800 改为 700ms，更紧凑
     _ctrl = AnimationController(
       duration: const Duration(milliseconds: 700),
       vsync: this,
@@ -269,16 +408,10 @@ class _DamageTextState extends State<DamageText>
       end: 0.0,
     ).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.5, 1.0)));
 
-    _position =
-        Tween<Offset>(
-          begin: const Offset(0, 0),
-          end: const Offset(0, -60),
-        ).animate(
-          CurvedAnimation(
-            parent: _ctrl,
-            curve: Curves.easeOutBack,
-          ), // 用 easeOutBack 会有Q弹的感觉
-        );
+    _position = Tween<Offset>(
+      begin: const Offset(0, 0),
+      end: const Offset(0, -60),
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
 
     _ctrl.forward().then((_) => widget.onDone());
   }
@@ -301,7 +434,7 @@ class _DamageTextState extends State<DamageText>
             "-${widget.value}",
             style: const TextStyle(
               color: Colors.redAccent,
-              fontSize: 32, // 字体加大了一点
+              fontSize: 32,
               fontWeight: FontWeight.w900,
               shadows: [
                 Shadow(
