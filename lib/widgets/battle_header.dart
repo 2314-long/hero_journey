@@ -15,7 +15,11 @@ class BattleHeader extends StatefulWidget {
   final int currentXp;
   final int maxXp;
 
-  // 回调
+  // 头像 URL
+  final String avatarUrl;
+
+  // 点击回调
+  final VoidCallback? onAvatarTap;
   final VoidCallback? onChestTap;
 
   const BattleHeader({
@@ -29,6 +33,8 @@ class BattleHeader extends StatefulWidget {
     required this.hasShield,
     required this.currentXp,
     required this.maxXp,
+    this.avatarUrl = "",
+    this.onAvatarTap,
     this.onChestTap,
   });
 
@@ -61,7 +67,9 @@ class BattleHeaderState extends State<BattleHeader>
           lowerBound: 0.0,
           upperBound: 0.1,
         )..addListener(() {
-          setState(() {});
+          // 这个 setState 是震动动画必须的，但可能会导致控制台打印一些 rebuild 信息
+          // 这是正常的，不必担心
+          if (mounted) setState(() {});
         });
     _attackCtrl = AnimationController(
       duration: const Duration(milliseconds: 2000),
@@ -129,8 +137,9 @@ class BattleHeaderState extends State<BattleHeader>
       child: DamageText(
         value: damage,
         onDone: () {
-          if (mounted)
+          if (mounted) {
             setState(() => _damagePopups.removeWhere((e) => e.key == key));
+          }
         },
       ),
     );
@@ -161,6 +170,7 @@ class BattleHeaderState extends State<BattleHeader>
       fit: BoxFit.contain,
       filterQuality: FilterQuality.none,
     );
+    // 简化的 Boss 颜色逻辑
     if (level < 10)
       return ColorFiltered(
         colorFilter: const ColorFilter.mode(Colors.green, BlendMode.modulate),
@@ -184,98 +194,12 @@ class BattleHeaderState extends State<BattleHeader>
         ),
         child: rawImage,
       );
-    else if (level < 50)
-      return ColorFiltered(
-        colorFilter: const ColorFilter.matrix([
-          0.2126,
-          0.7152,
-          0.0722,
-          0,
-          0,
-          0.2126,
-          0.7152,
-          0.0722,
-          0,
-          0,
-          0.2126,
-          0.7152,
-          0.0722,
-          0,
-          0,
-          0,
-          0,
-          0,
-          1,
-          0,
-        ]),
-        child: ColorFiltered(
-          colorFilter: const ColorFilter.mode(Colors.grey, BlendMode.modulate),
-          child: rawImage,
-        ),
-      );
-    else if (level < 60)
-      return ShaderMask(
-        shaderCallback: (bounds) => const LinearGradient(
-          colors: [
-            Colors.red,
-            Colors.orange,
-            Colors.yellow,
-            Colors.green,
-            Colors.blue,
-            Colors.purple,
-          ],
-        ).createShader(bounds),
-        blendMode: BlendMode.modulate,
-        child: ColorFiltered(
-          colorFilter: const ColorFilter.matrix([
-            1.5,
-            1.5,
-            1.5,
-            0,
-            0,
-            1.5,
-            1.5,
-            1.5,
-            0,
-            0,
-            1.5,
-            1.5,
-            1.5,
-            0,
-            0,
-            0,
-            0,
-            0,
-            1,
-            0,
-          ]),
-          child: rawImage,
-        ),
-      );
     else
       return ColorFiltered(
-        colorFilter: const ColorFilter.matrix([
-          1.2,
-          1.2,
-          1.2,
-          0,
-          30,
-          1.2,
-          1.2,
-          1.2,
-          0,
-          30,
-          1.2,
-          1.2,
-          1.2,
-          0,
-          30,
-          0,
-          0,
-          0,
-          1,
-          0,
-        ]),
+        colorFilter: const ColorFilter.mode(
+          Colors.purpleAccent,
+          BlendMode.modulate,
+        ),
         child: rawImage,
       );
   }
@@ -291,6 +215,7 @@ class BattleHeaderState extends State<BattleHeader>
     return "光辉白龙";
   }
 
+  @override
   @override
   Widget build(BuildContext context) {
     int monsterCurrentHp = _showChest ? 0 : (widget.maxXp - widget.currentXp);
@@ -323,7 +248,7 @@ class BattleHeaderState extends State<BattleHeader>
         borderRadius: BorderRadius.circular(24),
         child: Stack(
           children: [
-            // 背景
+            // 1. 背景层
             Row(
               children: [
                 Expanded(child: Container(color: const Color(0xFF2A2D3E))),
@@ -344,7 +269,7 @@ class BattleHeaderState extends State<BattleHeader>
               ],
             ),
 
-            // VS 装饰
+            // 2. 装饰层
             Center(
               child: Transform.rotate(
                 angle: 0.2,
@@ -356,105 +281,136 @@ class BattleHeaderState extends State<BattleHeader>
               ),
             ),
 
+            // 3. 内容层
             Row(
               children: [
-                // ==========================
-                // 👈 左侧：HERO (玩家)
-                // ==========================
+                // 👈 左侧：玩家区域
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 1. 顶部：等级 & 金币 & 装备
-                        Row(
-                          children: [
-                            _buildBadge(
-                              Icons.shield,
-                              "Lv.${widget.level}",
-                              Colors.blue,
-                            ),
-                            const SizedBox(width: 6),
-                            _buildBadge(
-                              Icons.monetization_on,
-                              "${widget.gold}",
-                              Colors.amber,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-
-                        // 🔥 装备栏移到这里 (上方)
-                        if (widget.hasResurrectionCross ||
-                            widget.hasSword ||
-                            widget.hasShield)
-                          Row(
-                            children: [
-                              if (widget.hasSword)
-                                _buildEquipIcon(
-                                  Icons.colorize,
-                                  Colors.blue.shade200,
+                  child: GestureDetector(
+                    onTap: widget.onAvatarTap,
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // 🔥 Row 1: 第一行修正 (移除 Flexible)
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                _buildBadge(
+                                  Icons.shield,
+                                  "Lv.${widget.level}",
                                   Colors.blue,
                                 ),
-                              if (widget.hasShield)
-                                _buildEquipIcon(
-                                  Icons.security,
-                                  Colors.brown.shade200,
-                                  Colors.brown,
-                                ),
-                              if (widget.hasResurrectionCross)
-                                _buildEquipIcon(
-                                  Icons.local_hospital,
-                                  Colors.pink.shade200,
-                                  Colors.pink,
-                                ),
-                            ],
-                          )
-                        else
-                          // 占位，保持高度一致
-                          const SizedBox(height: 24),
+                                const SizedBox(width: 4),
 
-                        const Spacer(),
+                                // ✅ [核心修复] 去掉了 Flexible，直接显示金币
+                                // 在 SingleChildScrollView 里不能用 Flexible
+                                _buildBadge(
+                                  Icons.monetization_on,
+                                  "${widget.gold}",
+                                  Colors.amber,
+                                ),
 
-                        // 2. 底部：血条 (Hero HP)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text(
-                                  "HERO HP",
-                                  style: TextStyle(
-                                    color: Colors.white54,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
+                                const SizedBox(width: 8),
+
+                                // 装备图标
+                                if (widget.hasSword)
+                                  _buildSmallEquipBadge(
+                                    Icons.colorize,
+                                    Colors.blue,
                                   ),
-                                ),
-                                Text(
-                                  "${widget.currentHp}",
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
+                                if (widget.hasShield)
+                                  _buildSmallEquipBadge(
+                                    Icons.security,
+                                    Colors.brown,
                                   ),
-                                ),
+                                if (widget.hasResurrectionCross)
+                                  _buildSmallEquipBadge(
+                                    Icons.local_hospital,
+                                    Colors.pink,
+                                  ),
                               ],
                             ),
-                            const SizedBox(height: 4),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                value: playerHpPct,
-                                backgroundColor: Colors.white10,
-                                color: const Color(0xFF00FFC2), // 玩家青色血条
-                                minHeight: 8,
+                          ),
+
+                          // Row 2: 头像
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white24,
+                                width: 2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 8,
+                                  offset: Offset(0, 4),
+                                ),
+                              ],
+                              image: DecorationImage(
+                                fit: BoxFit.cover,
+                                image: widget.avatarUrl.isNotEmpty
+                                    ? NetworkImage(
+                                        "http://10.0.2.2:8080${widget.avatarUrl}",
+                                      )
+                                    : const AssetImage(
+                                            'assets/images/default_avatar.png',
+                                          )
+                                          as ImageProvider,
                               ),
                             ),
-                          ],
-                        ),
-                      ],
+                          ),
+
+                          // Row 3: HP
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    "HERO HP",
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    "${widget.currentHp}/${widget.maxHp}",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: playerHpPct,
+                                  backgroundColor: Colors.white10,
+                                  color: const Color(0xFF00FFC2),
+                                  minHeight: 6,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -475,9 +431,7 @@ class BattleHeaderState extends State<BattleHeader>
                   ),
                 ),
 
-                // ==========================
-                // 👉 右侧：BOSS (魔王)
-                // ==========================
+                // 👉 右侧：Boss 区域 (保持不变)
                 Expanded(
                   child: GestureDetector(
                     onTap: _showChest ? widget.onChestTap : () => hit(10),
@@ -486,11 +440,10 @@ class BattleHeaderState extends State<BattleHeader>
                       alignment: Alignment.center,
                       children: [
                         Padding(
-                          padding: const EdgeInsets.all(16.0),
+                          padding: const EdgeInsets.all(12.0),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              // 1. 顶部：Boss 名字
                               Text(
                                 _getBossTitle(),
                                 style: const TextStyle(
@@ -502,10 +455,7 @@ class BattleHeaderState extends State<BattleHeader>
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-
                               const Spacer(),
-
-                              // 2. 底部：血条 (Boss HP) - 与 Hero 对齐
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
@@ -537,7 +487,7 @@ class BattleHeaderState extends State<BattleHeader>
                                     child: LinearProgressIndicator(
                                       value: bossHpPct,
                                       backgroundColor: Colors.white10,
-                                      color: Colors.redAccent, // Boss 红色血条
+                                      color: Colors.redAccent,
                                       minHeight: 8,
                                     ),
                                   ),
@@ -547,9 +497,8 @@ class BattleHeaderState extends State<BattleHeader>
                           ),
                         ),
 
-                        // 🔥 龙的图片 (绝对定位)
                         Positioned(
-                          top: 30, // 调整位置
+                          top: 25,
                           child: SizedBox(
                             height: 80,
                             width: 80,
@@ -585,7 +534,6 @@ class BattleHeaderState extends State<BattleHeader>
                                   ),
                           ),
                         ),
-
                         ..._damagePopups,
                       ],
                     ),
@@ -599,7 +547,7 @@ class BattleHeaderState extends State<BattleHeader>
     );
   }
 
-  // 徽章
+  // 徽章组件
   Widget _buildBadge(IconData icon, String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -625,24 +573,21 @@ class BattleHeaderState extends State<BattleHeader>
     );
   }
 
-  // 装备图标
-  Widget _buildEquipIcon(IconData icon, Color bgColor, Color iconColor) {
+  // ⚡ 新的小型装备图标
+  Widget _buildSmallEquipBadge(IconData icon, Color color) {
     return Container(
-      margin: const EdgeInsets.only(right: 6),
-      width: 24,
-      height: 24,
+      margin: const EdgeInsets.only(left: 4), // 图标之间的间距
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(6),
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(4), //稍微方一点
       ),
-      child: Icon(icon, color: iconColor, size: 14),
+      child: Icon(icon, color: color, size: 10), // 小尺寸图标
     );
   }
 }
 
-// ... (BattleHeader 类保持不变，只替换文件最底部的 DamageText 部分) ...
-
-// 💥 伤害飘字组件 (优化版)
+// 伤害飘字 (保持不变)
 class DamageText extends StatefulWidget {
   final int value;
   final VoidCallback onDone;
@@ -655,38 +600,30 @@ class _DamageTextState extends State<DamageText>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _opacity;
-  late Animation<double> _scale; // 新增缩放动画
+  late Animation<double> _scale;
   late Animation<Offset> _position;
 
   @override
   void initState() {
     super.initState();
-    // ⏱️ 1. 调慢速度：从 700ms 增加到 1200ms
     _ctrl = AnimationController(
       duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
-
-    // 👻 2. 优化透明度：前 70% 的时间是完全不透明的，只有最后 30% 才淡出
-    // 这样用户有足够的时间看清数字
     _opacity = Tween<double>(begin: 1.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _ctrl,
         curve: const Interval(0.7, 1.0, curve: Curves.easeIn),
       ),
     );
-
-    // 🎈 3. 优化位移：向上飘动 60 像素，使用平滑曲线
     _position = Tween<Offset>(
       begin: const Offset(0, 0),
       end: const Offset(0, -60),
     ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
-
-    // 💥 4. 新增缩放：数字刚出来时有一个“弹出来”的效果 (0.5倍 -> 1.2倍 -> 1.0倍)
     _scale = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.5), weight: 20), // 快速变大
-      TweenSequenceItem(tween: Tween(begin: 1.5, end: 1.0), weight: 20), // 回弹正常
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 60), // 保持
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.5), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 1.5, end: 1.0), weight: 20),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 60),
     ]).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
 
     _ctrl.forward().then((_) => widget.onDone());
@@ -705,20 +642,17 @@ class _DamageTextState extends State<DamageText>
       builder: (ctx, child) => Transform.translate(
         offset: _position.value,
         child: Transform.scale(
-          // 应用缩放
           scale: _scale.value,
           child: Opacity(
             opacity: _opacity.value,
-            // 🔥 5. 颜色修复：红色 + 描边 + 发光
             child: Text(
               "-${widget.value}",
               style: const TextStyle(
-                color: Color(0xFFFF3333), // 鲜艳的红
-                fontSize: 32, // 字号加大
-                fontWeight: FontWeight.w900, // 超粗体
-                fontStyle: FontStyle.italic, // 斜体更有速度感
+                color: Color(0xFFFF3333),
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic,
                 shadows: [
-                  // 黑色描边，保证在深色背景和浅色背景都能看清
                   Shadow(
                     blurRadius: 0,
                     color: Colors.black,
@@ -739,7 +673,6 @@ class _DamageTextState extends State<DamageText>
                     color: Colors.black,
                     offset: Offset(-1, 1),
                   ),
-                  // 红色光晕
                   Shadow(
                     blurRadius: 10,
                     color: Colors.redAccent,

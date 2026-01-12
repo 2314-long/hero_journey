@@ -8,6 +8,8 @@ import 'storage_service.dart';
 import 'package:flutter/material.dart'; // 需要 Material 路由
 import '../utils/global_keys.dart'; // 引入全局 Key
 import '../screens/login_screen.dart';
+import 'package:http_parser/http_parser.dart';
+import 'dart:io';
 
 class ApiService {
   // 1. 基础配置
@@ -341,5 +343,40 @@ class ApiService {
       // 3. 抛出异常，打断后续逻辑 (防止代码继续解析错误的 JSON)
       throw Exception("登录已过期，请重新登录");
     }
+  }
+
+  Future<String?> uploadAvatar(File imageFile) async {
+    try {
+      var uri = Uri.parse('$baseUrl/profile/avatar/upload');
+      var request = http.MultipartRequest('POST', uri);
+
+      // 添加 Token
+      final token = await StorageService().getToken();
+      if (token != null) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
+
+      // 添加文件
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'avatar', // 后端接收的字段名
+          imageFile.path,
+        ),
+      );
+
+      // 发送
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        return data['avatar_url']; // 返回后端给的新 URL
+      } else {
+        print("上传失败: ${response.body}");
+      }
+    } catch (e) {
+      print("上传出错: $e");
+    }
+    return null;
   }
 }
