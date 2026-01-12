@@ -577,6 +577,9 @@ class _MainScreenState extends State<MainScreen>
     // --- 下面的代码只有在 [普通攻击] 时才会运行 ---
 
     final int oldLevel = level;
+    final bool oldDoneState = task.isDone;
+    final int oldXp = currentXp;
+    final int oldHp = currentHp;
 
     setState(() {
       task.isDone = !task.isDone;
@@ -589,7 +592,12 @@ class _MainScreenState extends State<MainScreen>
 
     if (!success) {
       if (mounted) {
-        setState(() => task.isDone = !task.isDone);
+        setState(() {
+          // 🔄 回滚！把数据改回第一步记下的样子
+          task.isDone = oldDoneState;
+          currentXp = oldXp;
+          currentHp = oldHp;
+        });
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text("⚠️ 同步失败，请检查网络")));
@@ -653,25 +661,31 @@ class _MainScreenState extends State<MainScreen>
       builder: (context) {
         return AddTaskDialog(
           onSubmit: (title, deadline) async {
-            // 乐观 UI 更新
-            int tempId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+            // 1. ⚡ 乐观更新：先生成一个临时的 ID，立刻显示在界面上
+            // 建议：直接用毫秒，防止一秒内创建两个任务ID冲突
+            int tempId = DateTime.now().millisecondsSinceEpoch;
+
             final tempTask = Task(
               id: tempId,
               title: title,
               deadline: deadline?.toIso8601String(),
+              reward: 100, // 默认给个奖励值显示
             );
 
             setState(() => tasks.add(tempTask));
 
+            // 2. 📡 发送请求给后端
             final serverTask = await ApiService().createTask(
               title,
               deadline?.toIso8601String(),
             );
 
+            // 3. ⚖️ 根据结果判断
             if (serverTask != null && mounted) {
+              // ✅ 成功：把“假的”换成“真的” (Server Task 有真实的 ID)
               setState(() {
-                tasks.removeWhere((t) => t.id == tempId);
-                tasks.add(serverTask);
+                tasks.removeWhere((t) => t.id == tempId); // 删掉临时的
+                tasks.add(serverTask); // 加上真的
               });
               _saveData();
 
@@ -681,6 +695,17 @@ class _MainScreenState extends State<MainScreen>
                   title,
                   deadline,
                 );
+              }
+            } else {
+              // ❌ [核心修复] 失败：必须把“假的”删掉！
+              // 如果不删，这个任务会一直留在列表里，但其实后端根本没有
+              if (mounted) {
+                setState(() {
+                  tasks.removeWhere((t) => t.id == tempId);
+                });
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text("❌ 创建失败，请检查网络")));
               }
             }
           },
