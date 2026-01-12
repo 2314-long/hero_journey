@@ -21,6 +21,8 @@ import '../services/audio_service.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../widgets/boss_stage.dart'; // 别忘了引入
+import '../widgets/player_status_card.dart';
+import '../widgets/battle_header.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -42,7 +44,7 @@ class _MainScreenState extends State<MainScreen>
     "已过期": true, // 默认展开
     "已完成": false, // 默认收起
   };
-  final GlobalKey<BossStageState> _bossKey = GlobalKey<BossStageState>();
+  final GlobalKey<BattleHeaderState> _bossKey = GlobalKey<BattleHeaderState>();
 
   // 虽然我们现在直接查背包，但这个变量保留用于 UI 显示（比如头部状态栏的小图标）
   bool hasResurrectionCross = false;
@@ -809,26 +811,26 @@ class _MainScreenState extends State<MainScreen>
     overdue.sort(sortTime);
 
     return ListView(
-      padding: const EdgeInsets.only(bottom: 80, top: 16),
+      padding: const EdgeInsets.only(
+        bottom: 80,
+        top: 0,
+      ), // top 改为 0，因为卡片自带 margin
       children: [
-        BossStage(
+        BattleHeader(
           key: _bossKey,
           level: level,
+          currentHp: currentHp,
+          maxHp: maxHp,
+          gold: gold,
+          hasResurrectionCross: hasResurrectionCross,
+          hasSword: hasSword,
+          hasShield: hasShield,
           currentXp: currentXp,
           maxXp: maxXp,
           onChestTap: _checkLevelUp,
         ),
-        StatusHeader(
-          currentHp: currentHp,
-          maxHp: maxHp,
-          gold: gold,
-          level: level,
-          currentXp: currentXp,
-          maxXp: maxXp,
-          hasResurrectionCross: hasResurrectionCross,
-          hasSword: hasSword,
-          hasShield: hasShield,
-        ),
+
+        // ❌ StatusHeader 被删除了，这里不再需要它
         if (tasks.isEmpty)
           const Padding(
             padding: EdgeInsets.all(40.0),
