@@ -5,6 +5,9 @@ import 'package:http/http.dart' as http;
 import '../models/task.dart';
 import '../models/item.dart';
 import 'storage_service.dart';
+import 'package:flutter/material.dart'; // 需要 Material 路由
+import '../utils/global_keys.dart'; // 引入全局 Key
+import '../screens/login_screen.dart';
 
 class ApiService {
   // 1. 基础配置
@@ -85,6 +88,7 @@ class ApiService {
         Uri.parse('$baseUrl/tasks'),
         headers: await _getHeaders(), // ✅ 使用统一的 headers
       );
+      _checkAndHandleError(response);
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
@@ -105,6 +109,7 @@ class ApiService {
         headers: await _getHeaders(), // ✅ 使用统一的 headers
         body: jsonEncode({'title': title, 'deadline': deadline}),
       );
+      _checkAndHandleError(response);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return Task.fromJson(jsonDecode(utf8.decode(response.bodyBytes)));
@@ -124,6 +129,7 @@ class ApiService {
         headers: await _getHeaders(), // ✅ 修复：之前这里用了 _headers 导致没 Token
         body: jsonEncode(task.toJson()),
       );
+      _checkAndHandleError(response);
       return response.statusCode == 200;
     } catch (e) {
       print("更新任务失败: $e");
@@ -137,6 +143,7 @@ class ApiService {
         Uri.parse('$baseUrl/tasks/$id'),
         headers: await _getHeaders(), // ✅ 修复
       );
+      _checkAndHandleError(response);
       return response.statusCode == 200;
     } catch (e) {
       print("删除任务失败: $e");
@@ -152,6 +159,7 @@ class ApiService {
         Uri.parse('$baseUrl/stats'),
         headers: await _getHeaders(), // ✅ 修复
       );
+      _checkAndHandleError(response);
       if (response.statusCode == 200) {
         return jsonDecode(utf8.decode(response.bodyBytes));
       }
@@ -207,6 +215,7 @@ class ApiService {
         headers: await _getHeaders(), // ✅ 简化代码
         body: jsonEncode({'item_id': itemId}),
       );
+      _checkAndHandleError(response);
 
       if (response.statusCode == 200) {
         return null; // ✅ 成功
@@ -227,6 +236,7 @@ class ApiService {
         Uri.parse('$baseUrl/inventory'),
         headers: await _getHeaders(),
       );
+      _checkAndHandleError(response);
 
       if (response.statusCode == 200) {
         // 防止中文乱码
@@ -262,6 +272,7 @@ class ApiService {
         headers: await _getHeaders(), // ✅ 简化代码
         body: jsonEncode({'inventory_id': inventoryId}),
       );
+      _checkAndHandleError(response);
       return response.statusCode == 200;
     } catch (e) {
       print("装备操作失败: $e");
@@ -277,6 +288,7 @@ class ApiService {
         headers: await _getHeaders(), // ✅ 简化代码
         body: jsonEncode({'inventory_id': inventoryId}),
       );
+      _checkAndHandleError(response);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
@@ -290,17 +302,44 @@ class ApiService {
 
   // ✝️ 复活请求
   Future<bool> resurrect() async {
-    final response = await http.post(
-      // 👇 注意：这里要和 main.go 里的路径对应，是 /resurrect
-      Uri.parse('$baseUrl/resurrect'),
-      headers: await _getHeaders(),
-    );
+    try {
+      final response = await http.post(
+        // 👇 注意：这里要和 main.go 里的路径对应，是 /resurrect
+        Uri.parse('$baseUrl/resurrect'),
+        headers: await _getHeaders(),
+      );
+      _checkAndHandleError(response);
 
-    if (response.statusCode == 200) {
-      return true;
-    } else {
-      print("复活失败: ${response.body}");
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print("复活失败: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("复活失败: $e");
       return false;
+    }
+  }
+
+  // 🔥 [新增] 全局错误拦截器
+  // 作用：检查 Token 是否过期，如果过期则踢人下线
+  void _checkAndHandleError(http.Response response) {
+    if (response.statusCode == 401) {
+      print("🚨 拦截到 401 Unauthorized，Token 已失效，正在强制退出...");
+
+      // 1. 清除本地存储的旧 Token
+      StorageService().clearAll();
+
+      // 2. 使用全局 Key 强制跳转回登录页
+      // pushAndRemoveUntil 会清空路由栈，防止用户按返回键回到旧页面
+      navigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false,
+      );
+
+      // 3. 抛出异常，打断后续逻辑 (防止代码继续解析错误的 JSON)
+      throw Exception("登录已过期，请重新登录");
     }
   }
 }

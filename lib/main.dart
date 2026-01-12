@@ -7,6 +7,7 @@ import 'screens/login_screen.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'utils/global_keys.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,6 +37,7 @@ class HeroApp extends StatelessWidget {
     final seedColor = const Color(0xFF6C63FF);
 
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: '英雄之旅',
       debugShowCheckedModeBanner: false,
       localizationsDelegates: const [
