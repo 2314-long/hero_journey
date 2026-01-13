@@ -41,6 +41,7 @@ class _MainScreenState extends State<MainScreen>
 
   // 🔥 [New] Avatar URL
   String avatarUrl = "";
+  String nickname = "无畏勇者";
 
   final Map<String, bool> _sectionExpandedState = {
     "进行中": true,
@@ -146,6 +147,7 @@ class _MainScreenState extends State<MainScreen>
         currentHp = apiStats['hp'];
         maxHp = apiStats['max_hp'];
         avatarUrl = apiStats['avatar_url'] ?? "";
+        nickname = apiStats['nickname'] ?? nickname;
       } else {
         currentHp = data['hp'];
         maxHp = data['maxHp'];
@@ -853,7 +855,24 @@ class _MainScreenState extends State<MainScreen>
       ShopPage(gold: gold, onRefreshData: _loadData),
 
       // 2: Profile Page
-      ProfileScreen(currentAvatarUrl: avatarUrl),
+      ProfileScreen(
+        initialAvatarUrl: avatarUrl,
+        initialUsername: nickname,
+        initialGold: gold,
+        initialCompletedTasks: tasks.where((t) => t.isDone).length,
+        // 当个人中心修改了资料，通知主页刷新
+        onProfileUpdate: (String? newName) {
+          // 1. 如果有新名字，直接更新本地状态
+          if (newName != null) {
+            setState(() {
+              nickname = newName;
+            });
+          }
+
+          // 2. 依然触发一次网络刷新，确保金币等数据同步
+          _loadData();
+        },
+      ),
     ];
 
     String appBarTitle = "任务战场";

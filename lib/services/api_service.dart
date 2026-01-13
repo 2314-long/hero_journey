@@ -379,4 +379,59 @@ class ApiService {
     }
     return null;
   }
+
+  // 修改昵称
+  Future<bool> updateNickname(String newName) async {
+    final token = await StorageService().getToken();
+    final url = Uri.parse('$baseUrl/user/nickname');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'nickname': newName}),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        // 可以解析 body['error'] 来打印具体错误
+        print("修改昵称失败: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("请求异常: $e");
+      return false;
+    }
+  }
+
+  // 修改密码 (返回 String?，如果是 null 代表成功，否则返回错误信息)
+  Future<String?> changePassword(String oldPass, String newPass) async {
+    final token = await StorageService().getToken();
+    final url = Uri.parse('$baseUrl/user/password');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'old_password': oldPass, 'new_password': newPass}),
+      );
+
+      if (response.statusCode == 200) {
+        return null; // 成功
+      } else {
+        // 解析后端返回的错误信息 "旧密码错误" 等
+        final body = jsonDecode(response.body);
+        return body['error'] ?? "修改失败";
+      }
+    } catch (e) {
+      return "网络异常: $e";
+    }
+  }
 }
