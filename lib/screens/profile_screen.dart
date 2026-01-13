@@ -192,8 +192,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // 🔒 修改密码
-  // 🔒 修改密码
+  // ⏳ 通用加载弹窗
+
+  // 🔒 修改密码 (优化版：增加Loading效果)
   void _changePassword() {
     TextEditingController oldCtrl = TextEditingController();
     TextEditingController newCtrl = TextEditingController();
@@ -201,136 +202,121 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     showDialog(
       context: context,
-      barrierDismissible: false, // 输入框弹窗也禁止误触关闭
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setStateDialog) {
-          bool isSubmitting = false;
-          return AlertDialog(
-            title: const Text("修改密码"),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: oldCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: "当前密码",
-                    prefixIcon: Icon(Icons.lock_outline),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: newCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: "新密码 (至少6位)",
-                    prefixIcon: Icon(Icons.vpn_key),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: confirmCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: "确认新密码",
-                    prefixIcon: Icon(Icons.check_circle_outline),
-                  ),
-                ),
-              ],
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text("修改密码"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: oldCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: "当前密码",
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
             ),
-            actions: [
-              TextButton(
-                // 只有未提交时才能取消
-                onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
-                child: const Text("取消"),
+            const SizedBox(height: 10),
+            TextField(
+              controller: newCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: "新密码 (至少6位)",
+                prefixIcon: Icon(Icons.vpn_key),
               ),
-              FilledButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () async {
-                        // 1. 基础校验
-                        if (newCtrl.text.length < 6) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("新密码太短了")),
-                          );
-                          return;
-                        }
-                        if (newCtrl.text != confirmCtrl.text) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("两次输入的密码不一致")),
-                          );
-                          return;
-                        }
-
-                        // 2. 开始提交
-                        setStateDialog(() => isSubmitting = true);
-                        String? error = await ApiService().changePassword(
-                          oldCtrl.text,
-                          newCtrl.text,
-                        );
-
-                        if (!mounted) return;
-
-                        if (error == null) {
-                          // ✅ 成功的情况
-                          Navigator.pop(ctx); // 先关闭输入密码的弹窗
-
-                          // 🔥 [核心修改] 弹出强制重登录的提示框
-                          showDialog(
-                            context: context,
-                            barrierDismissible: false, // 🔒 禁止点击外部关闭，强制只能点确定
-                            builder: (context) => AlertDialog(
-                              title: const Text("修改成功"),
-                              content: const Text("您的密码已更新。为了账户安全，请重新登录。"),
-                              actions: [
-                                FilledButton(
-                                  onPressed: () async {
-                                    // 1. 关闭提示框
-                                    Navigator.pop(context);
-
-                                    // 2. 清除本地数据
-                                    await StorageService().clearAll();
-
-                                    // 3. 跳转回登录页 (清空路由栈)
-                                    if (mounted) {
-                                      Navigator.of(context).pushAndRemoveUntil(
-                                        MaterialPageRoute(
-                                          builder: (c) => const LoginScreen(),
-                                        ),
-                                        (route) => false,
-                                      );
-                                    }
-                                  },
-                                  child: const Text("确定"),
-                                ),
-                              ],
-                            ),
-                          );
-                        } else {
-                          // ❌ 失败的情况
-                          setStateDialog(() => isSubmitting = false);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text("❌ $error"),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      },
-                child: isSubmitting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Text("确认修改"),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: confirmCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: "确认新密码",
+                prefixIcon: Icon(Icons.check_circle_outline),
               ),
-            ],
-          );
-        },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("取消"),
+          ),
+          FilledButton(
+            onPressed: () async {
+              // 1. 基础校验
+              if (newCtrl.text.length < 6) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text("新密码太短了")));
+                return;
+              }
+              if (newCtrl.text != confirmCtrl.text) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text("两次输入的密码不一致")));
+                return;
+              }
+
+              // 2. 🔥 弹出 Loading 圈 (阻断操作)
+              _showLoadingDialog(context);
+
+              // 3. 发送请求
+              // 注意：这里不需要 setStateDialog 了，因为有全屏 Loading 挡着
+              String? error = await ApiService().changePassword(
+                oldCtrl.text,
+                newCtrl.text,
+              );
+
+              // 4. 关闭 Loading 圈
+              if (!mounted) return;
+              Navigator.of(context).pop();
+
+              // 5. 处理结果
+              if (error == null) {
+                // ✅ 成功：先关闭"修改密码"的弹窗
+                Navigator.pop(ctx);
+
+                // 🔥 弹出强制重登录提示
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => AlertDialog(
+                    title: const Text("修改成功"),
+                    content: const Text("您的密码已更新。请使用新密码重新登录。"),
+                    actions: [
+                      FilledButton(
+                        onPressed: () async {
+                          Navigator.pop(context); // 关闭提示框
+                          await StorageService().clearAll(); // 清理数据
+
+                          if (mounted) {
+                            // 跳转回登录页
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(
+                                builder: (c) => const LoginScreen(),
+                              ),
+                              (route) => false,
+                            );
+                          }
+                        },
+                        child: const Text("去登录"),
+                      ),
+                    ],
+                  ),
+                );
+              } else {
+                // ❌ 失败：报错提示
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("❌ $error"),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text("确认修改"),
+          ),
+        ],
       ),
     );
   }
@@ -598,6 +584,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+      ),
+    );
+  }
+
+  void _showLoadingDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // 点击背景不关闭
+      builder: (ctx) => Center(
+        child: Container(
+          padding: EdgeInsets.all(30),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.all(Radius.circular(16)),
+            boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                "正在处理...",
+                style: TextStyle(
+                  color: Colors.black54,
+                  fontSize: 14,
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
