@@ -469,15 +469,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: Colors.black87,
                 ),
               ),
+              const SizedBox(width: 8), // 稍微加点间距
               IconButton(
+                // 视觉优化：把编辑图标稍微调小一点，颜色淡一点，更精致
+                constraints: const BoxConstraints(), // 紧凑布局
+                padding: EdgeInsets.zero,
                 icon: const Icon(Icons.edit, size: 18, color: Colors.grey),
                 onPressed: _editNickname,
               ),
             ],
-          ),
-          const Text(
-            "Lv.1 初级冒险家",
-            style: TextStyle(color: Colors.grey, fontSize: 12),
           ),
         ],
       ),
