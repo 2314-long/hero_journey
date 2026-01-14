@@ -40,6 +40,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   bool _isLoading = false;
   List<dynamic> _achievements = [];
+  String _signature = "无畏勇者 - 正在书写传奇";
 
   @override
   void initState() {
@@ -74,6 +75,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _username = stats['nickname'] ?? _username;
           _activeDays = stats['active_days'] ?? _activeDays;
           _achievements = stats['achievements'] ?? [];
+          if (stats['signature'] != null &&
+              stats['signature'].toString().isNotEmpty) {
+            _signature = stats['signature'];
+          }
         }
         if (tasks != null) {
           _completedTasks = tasks.where((t) => t.isDone == true).length;
@@ -82,6 +87,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       debugPrint("后台同步个人数据失败: $e"); // 静默失败，不打扰用户
     }
+  }
+
+  // ✏️ 修改个性签名
+  void _editSignature() {
+    TextEditingController controller = TextEditingController(text: _signature);
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          bool isSubmitting = false;
+          return AlertDialog(
+            title: const Text("修改个性签名"),
+            content: TextField(
+              controller: controller,
+              maxLength: 30, // 限制字数
+              maxLines: 2, // 允许换行
+              decoration: const InputDecoration(
+                hintText: "写下一句鼓励自己的话吧...",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("取消"),
+              ),
+              FilledButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        setStateDialog(() => isSubmitting = true);
+                        final newSig = controller.text.trim();
+
+                        // 调用 API
+                        bool success = await ApiService().updateSignature(
+                          newSig,
+                        );
+
+                        if (!mounted) return;
+                        if (success) {
+                          setState(() => _signature = newSig); // 更新 UI
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("✅ 个性签名已更新"),
+                              backgroundColor: Colors.green,
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
+                        } else {
+                          setStateDialog(() => isSubmitting = false);
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(const SnackBar(content: Text("修改失败")));
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(color: Colors.white),
+                      )
+                    : const Text("保存"),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   // 📸 上传头像逻辑
@@ -538,7 +612,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 30, 20, 30),
+      // 🔥 [关键修改 1] 减小了 Padding，尤其是 bottom，让蓝色卡片能贴得更近
+      // 这里的 top: 50 是为了避开手机状态栏 (SafeArea)
+      padding: const EdgeInsets.fromLTRB(24, 60, 24, 30),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.only(
@@ -553,18 +629,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
-      child: Column(
+      // 🔥 [关键修改 2] 改用 Row (水平布局) 代替 Column (垂直布局)
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center, // 垂直居中
         children: [
+          // 1. 头像区域 (稍微缩小尺寸，从100改成76，更精致)
           Stack(
             children: [
               Container(
-                width: 100,
-                height: 100,
+                width: 76,
+                height: 76,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 4),
+                  border: Border.all(color: Colors.white, width: 3),
                   boxShadow: [
-                    const BoxShadow(blurRadius: 10, color: Colors.black12),
+                    const BoxShadow(blurRadius: 8, color: Colors.black12),
                   ],
                   image: DecorationImage(
                     image: imageProvider,
@@ -578,7 +657,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: GestureDetector(
                   onTap: _pickAndUploadImage,
                   child: Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(6), // 图标也相应调小
                     decoration: BoxDecoration(
                       color: Theme.of(context).primaryColor,
                       shape: BoxShape.circle,
@@ -586,8 +665,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     child: _isLoading
                         ? const SizedBox(
-                            width: 16,
-                            height: 16,
+                            width: 12,
+                            height: 12,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               color: Colors.white,
@@ -595,7 +674,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           )
                         : const Icon(
                             Icons.camera_alt,
-                            size: 16,
+                            size: 14,
                             color: Colors.white,
                           ),
                   ),
@@ -603,27 +682,87 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                _username,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+
+          const SizedBox(width: 20), // 头像和文字的间距
+          // 2. 昵称区域 (改为左对齐)
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, // 左对齐
+              children: [
+                Row(
+                  children: [
+                    // 昵称限制最大长度，防止溢出
+                    Flexible(
+                      child: Text(
+                        _username,
+                        style: const TextStyle(
+                          fontSize: 24, // 字体稍微加大一点点，因为空间够了
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // 编辑图标
+                    GestureDetector(
+                      onTap: _editNickname,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        color: Colors.transparent, // 增加点击区域
+                        child: const Icon(
+                          Icons.edit,
+                          size: 18,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 8), // 稍微加点间距
-              IconButton(
-                // 视觉优化：把编辑图标稍微调小一点，颜色淡一点，更精致
-                constraints: const BoxConstraints(), // 紧凑布局
-                padding: EdgeInsets.zero,
-                icon: const Icon(Icons.edit, size: 18, color: Colors.grey),
-                onPressed: _editNickname,
-              ),
-            ],
+                // const SizedBox(height: 4),
+                const SizedBox(height: 8), // 稍微拉开一点距离
+                // 🔥 [修改] 个性签名区域 (支持点击修改)
+                GestureDetector(
+                  onTap: _editSignature,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min, // 让 Row 尽可能短，紧贴内容
+                    children: [
+                      // 1. 签名文本 (使用 Flexible 代替 Expanded)
+                      Flexible(
+                        child: Text(
+                          _signature.isEmpty ? "点击设置个性签名" : _signature, // 处理空状态
+                          style: TextStyle(
+                            fontSize: 14, // 字体微调大一点
+                            color: Colors.grey.shade700, // 颜色加深一点，更清晰
+                            height: 1.2,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+
+                      const SizedBox(width: 6), // 文字和图标的间距
+                      // 2. 编辑图标 (变大、变清晰)
+                      Container(
+                        padding: const EdgeInsets.all(4), // 增加点击热区
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100, // 给个淡淡的背景
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Icon(
+                          Icons.edit_square, // 换成方块编辑图标，视觉重心更稳
+                          size: 18, // 尺寸调大
+                          color: Theme.of(
+                            context,
+                          ).primaryColor.withOpacity(0.8), // 用主题色，更显眼
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

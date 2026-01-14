@@ -388,10 +388,7 @@ class ApiService {
     try {
       final response = await http.post(
         url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: await _getHeaders(),
         body: jsonEncode({'nickname': newName}),
       );
 
@@ -416,10 +413,7 @@ class ApiService {
     try {
       final response = await http.post(
         url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+        headers: await _getHeaders(),
         body: jsonEncode({'old_password': oldPass, 'new_password': newPass}),
       );
 
@@ -432,6 +426,30 @@ class ApiService {
       }
     } catch (e) {
       return "网络异常: $e";
+    }
+  }
+
+  Future<bool> updateSignature(String newSig) async {
+    try {
+      final response = await http.post(
+        // 对应后端路由: v1.POST("/character/signature", ...)
+        Uri.parse('$baseUrl/user/signature'),
+        headers: await _getHeaders(), // ✅ 复用统一的 Header 获取方法 (自动带 Token)
+        body: jsonEncode({'signature': newSig}),
+      );
+
+      // 使用全局错误拦截 (检查是否 401)
+      _checkAndHandleError(response);
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print("更新签名失败: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("更新签名异常: $e");
+      return false;
     }
   }
 }
