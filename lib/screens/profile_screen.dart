@@ -39,6 +39,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late int _activeDays;
 
   bool _isLoading = false;
+  List<dynamic> _achievements = [];
 
   @override
   void initState() {
@@ -72,6 +73,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _gold = stats['gold'] ?? _gold;
           _username = stats['nickname'] ?? _username;
           _activeDays = stats['active_days'] ?? _activeDays;
+          _achievements = stats['achievements'] ?? [];
         }
         if (tasks != null) {
           _completedTasks = tasks.where((t) => t.isDone == true).length;
@@ -367,14 +369,158 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: _buildStatsBoard(),
           ),
-          const SizedBox(height: 20),
+
+          const SizedBox(height: 24),
+          _buildAchievementsSection(),
+
+          const SizedBox(height: 24),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: _buildSettingsMenu(),
+            child: _buildSettingsMenu(), // 菜单
           ),
+
           const SizedBox(height: 40),
         ],
       ),
+    );
+  }
+
+  // 🔥 [新增] 成就勋章墙 Widget
+  Widget _buildAchievementsSection() {
+    // 如果后端没返回成就，或者列表为空，就不显示这个区域，保持页面整洁
+    if (_achievements.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 24),
+          child: Text(
+            "成就勋章",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // 横向滚动的列表
+        SizedBox(
+          height: 140, // 给足够的高度
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 5,
+            ), // 加点垂直内边距防止阴影被切
+            scrollDirection: Axis.horizontal,
+            itemCount: _achievements.length,
+            separatorBuilder: (c, i) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final item = _achievements[index];
+              // 根据后端字段判断状态
+              final bool isUnlocked = item['is_unlocked'] ?? false;
+              final String icon = item['icon'] ?? "🔒";
+              final String name = item['name'] ?? "未知成就";
+              final String progress = item['progress'] ?? "";
+
+              return Container(
+                width: 110,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isUnlocked ? Colors.white : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                  // 未解锁显示灰色边框，解锁显示无边框但有阴影
+                  border: isUnlocked
+                      ? null
+                      : Border.all(color: Colors.grey.shade300),
+                  boxShadow: isUnlocked
+                      ? [
+                          BoxShadow(
+                            color: Colors.orange.withOpacity(0.15),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // 1. 图标圆圈
+                    Container(
+                      width: 48,
+                      height: 48,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        // 解锁是金色背景，未解锁是灰色
+                        color: isUnlocked
+                            ? Colors.orange.shade50
+                            : Colors.grey.shade200,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        icon,
+                        style: TextStyle(
+                          fontSize: 24,
+                          // 未解锁时让图标变灰（可选，或者用锁图标）
+                          color: isUnlocked ? null : Colors.grey,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // 2. 名称
+                    Text(
+                      name,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isUnlocked ? Colors.black87 : Colors.grey,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+
+                    // 3. 进度文字 / 完成对勾
+                    if (isUnlocked)
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.check_circle,
+                            size: 12,
+                            color: Colors.orange,
+                          ),
+                          SizedBox(width: 2),
+                          Text(
+                            "已达成",
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.orange,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        progress,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey,
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
