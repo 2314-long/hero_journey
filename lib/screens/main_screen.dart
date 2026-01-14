@@ -42,6 +42,7 @@ class _MainScreenState extends State<MainScreen>
   // 🔥 [New] Avatar URL
   String avatarUrl = "";
   String nickname = "无畏勇者";
+  String signature = "无畏勇者 - 正在书写传奇";
   int activeDays = 1;
 
   final Map<String, bool> _sectionExpandedState = {
@@ -150,6 +151,9 @@ class _MainScreenState extends State<MainScreen>
         avatarUrl = apiStats['avatar_url'] ?? "";
         nickname = apiStats['nickname'] ?? nickname;
         activeDays = apiStats['active_days'] ?? 1;
+        if (apiStats['signature'] != null) {
+          signature = apiStats['signature'];
+        }
       } else {
         currentHp = data['hp'];
         maxHp = data['maxHp'];
@@ -863,18 +867,18 @@ class _MainScreenState extends State<MainScreen>
         initialGold: gold,
         initialCompletedTasks: tasks.where((t) => t.isDone).length,
         initialActiveDays: activeDays,
+        initialSignature: signature,
         // 当个人中心修改了资料，通知主页刷新
-        onProfileUpdate: (String? newName) {
-          // 1. 如果有新名字，直接更新本地状态
-          if (newName != null) {
-            setState(() {
-              nickname = newName;
-            });
-          }
-
-          // 2. 依然触发一次网络刷新，确保金币等数据同步
-          _loadData();
-        },
+        onProfileUpdate:
+            ({String? newName, String? newSig, String? newAvatar}) {
+              setState(() {
+                if (newName != null) nickname = newName;
+                if (newSig != null) signature = newSig; // 🔥 同步签名
+                if (newAvatar != null) avatarUrl = newAvatar;
+              });
+              // 依然触发一次网络刷新保底
+              _loadData();
+            },
       ),
     ];
 

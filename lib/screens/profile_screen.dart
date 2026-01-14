@@ -12,7 +12,9 @@ class ProfileScreen extends StatefulWidget {
   final int initialGold;
   final int initialCompletedTasks;
   final int initialActiveDays;
-  final Function(String? newName)? onProfileUpdate;
+  final String initialSignature;
+  final Function({String? newName, String? newSig, String? newAvatar})?
+  onProfileUpdate;
 
   const ProfileScreen({
     super.key,
@@ -22,6 +24,7 @@ class ProfileScreen extends StatefulWidget {
     required this.initialCompletedTasks,
     required this.initialActiveDays,
     this.onProfileUpdate,
+    required this.initialSignature,
   });
 
   @override
@@ -40,7 +43,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   bool _isLoading = false;
   List<dynamic> _achievements = [];
-  String _signature = "无畏勇者 - 正在书写传奇";
+  late String _signature;
 
   @override
   void initState() {
@@ -51,6 +54,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _gold = widget.initialGold;
     _completedTasks = widget.initialCompletedTasks;
     _activeDays = widget.initialActiveDays;
+    _signature = widget.initialSignature;
 
     // 虽然已经有了数据，但还是可以在后台静默刷新一下最新数据
     _fetchRealData();
@@ -101,7 +105,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: const Text("修改个性签名"),
             content: TextField(
               controller: controller,
-              maxLength: 30, // 限制字数
+              maxLength: 20, // 限制字数
               maxLines: 2, // 允许换行
               decoration: const InputDecoration(
                 hintText: "写下一句鼓励自己的话吧...",
@@ -128,6 +132,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         if (!mounted) return;
                         if (success) {
                           setState(() => _signature = newSig); // 更新 UI
+                          widget.onProfileUpdate?.call(newSig: newSig);
                           Navigator.pop(ctx);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -173,7 +178,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (newUrl != null) {
         setState(() => _avatarUrl = newUrl);
         // 🔥 通知主页数据变了
-        widget.onProfileUpdate?.call(newUrl);
+        widget.onProfileUpdate?.call(newAvatar: newUrl);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -209,7 +214,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               decoration: const InputDecoration(
                 hintText: "请输入新的昵称",
                 border: OutlineInputBorder(),
-                counterText: "",
+                // counterText: "",
               ),
             ),
             actions: [
@@ -235,7 +240,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   if (success) {
                     setState(() => _username = newName);
                     // 🔥 通知主页数据变了
-                    widget.onProfileUpdate?.call(newName);
+                    widget.onProfileUpdate?.call(newName: newName);
 
                     Navigator.pop(ctx);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -704,17 +709,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 4),
                     // 编辑图标
                     GestureDetector(
                       onTap: _editNickname,
                       child: Container(
-                        padding: const EdgeInsets.all(4),
-                        color: Colors.transparent, // 增加点击区域
-                        child: const Icon(
-                          Icons.edit,
-                          size: 18,
-                          color: Colors.grey,
+                        // 增加透明点击热区，方便手指点击，但视觉上看不见背景
+                        padding: const EdgeInsets.all(6),
+                        color: Colors.transparent,
+                        child: Icon(
+                          Icons.mode_edit_outline, // 换成这种空心线条图标，更精致
+                          size: 16, // 尺寸适中
+                          color: Colors.black26, // 淡淡的灰色，不抢眼
                         ),
                       ),
                     ),
@@ -726,15 +732,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 GestureDetector(
                   onTap: _editSignature,
                   child: Row(
-                    mainAxisSize: MainAxisSize.min, // 让 Row 尽可能短，紧贴内容
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 1. 签名文本 (使用 Flexible 代替 Expanded)
                       Flexible(
                         child: Text(
-                          _signature.isEmpty ? "点击设置个性签名" : _signature, // 处理空状态
+                          _signature.isEmpty ? "点击设置个性签名" : _signature,
                           style: TextStyle(
-                            fontSize: 14, // 字体微调大一点
-                            color: Colors.grey.shade700, // 颜色加深一点，更清晰
+                            fontSize: 13, // 字体保持小巧
+                            color: Colors.grey.shade600,
                             height: 1.2,
                           ),
                           maxLines: 1,
@@ -742,20 +747,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
 
-                      const SizedBox(width: 6), // 文字和图标的间距
-                      // 2. 编辑图标 (变大、变清晰)
+                      const SizedBox(width: 2), // 极小的间距
+                      // 图标
                       Container(
                         padding: const EdgeInsets.all(4), // 增加点击热区
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100, // 给个淡淡的背景
-                          borderRadius: BorderRadius.circular(4),
-                        ),
+                        color: Colors.transparent,
                         child: Icon(
-                          Icons.edit_square, // 换成方块编辑图标，视觉重心更稳
-                          size: 18, // 尺寸调大
-                          color: Theme.of(
-                            context,
-                          ).primaryColor.withOpacity(0.8), // 用主题色，更显眼
+                          Icons.mode_edit_outline,
+                          size: 14, // 比上面的更小一点
+                          color: Colors.black12, // 非常淡的灰色，几乎隐形
                         ),
                       ),
                     ],
