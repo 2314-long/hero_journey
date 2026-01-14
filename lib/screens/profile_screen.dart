@@ -13,6 +13,7 @@ class ProfileScreen extends StatefulWidget {
   final int initialCompletedTasks;
   final int initialActiveDays;
   final String initialSignature;
+  final List<dynamic> initialAchievements;
   final Function({String? newName, String? newSig, String? newAvatar})?
   onProfileUpdate;
 
@@ -25,6 +26,7 @@ class ProfileScreen extends StatefulWidget {
     required this.initialActiveDays,
     this.onProfileUpdate,
     required this.initialSignature,
+    required this.initialAchievements,
   });
 
   @override
@@ -42,7 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late int _activeDays;
 
   bool _isLoading = false;
-  List<dynamic> _achievements = [];
+  late List<dynamic> _achievements;
   late String _signature;
 
   @override
@@ -55,6 +57,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _completedTasks = widget.initialCompletedTasks;
     _activeDays = widget.initialActiveDays;
     _signature = widget.initialSignature;
+    _achievements = widget.initialAchievements;
 
     // 虽然已经有了数据，但还是可以在后台静默刷新一下最新数据
     _fetchRealData();

@@ -43,6 +43,7 @@ class _MainScreenState extends State<MainScreen>
   String avatarUrl = "";
   String nickname = "无畏勇者";
   String signature = "无畏勇者 - 正在书写传奇";
+  List<dynamic> achievements = [];
   int activeDays = 1;
 
   final Map<String, bool> _sectionExpandedState = {
@@ -154,6 +155,7 @@ class _MainScreenState extends State<MainScreen>
         if (apiStats['signature'] != null) {
           signature = apiStats['signature'];
         }
+        achievements = apiStats['achievements'] ?? [];
       } else {
         currentHp = data['hp'];
         maxHp = data['maxHp'];
@@ -868,6 +870,7 @@ class _MainScreenState extends State<MainScreen>
         initialCompletedTasks: tasks.where((t) => t.isDone).length,
         initialActiveDays: activeDays,
         initialSignature: signature,
+        initialAchievements: achievements,
         // 当个人中心修改了资料，通知主页刷新
         onProfileUpdate:
             ({String? newName, String? newSig, String? newAvatar}) {
