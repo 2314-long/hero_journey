@@ -42,6 +42,7 @@ class _MainScreenState extends State<MainScreen>
   // 🔥 [New] Avatar URL
   String avatarUrl = "";
   String nickname = "无畏勇者";
+  int activeDays = 1;
 
   final Map<String, bool> _sectionExpandedState = {
     "进行中": true,
@@ -148,6 +149,7 @@ class _MainScreenState extends State<MainScreen>
         maxHp = apiStats['max_hp'];
         avatarUrl = apiStats['avatar_url'] ?? "";
         nickname = apiStats['nickname'] ?? nickname;
+        activeDays = apiStats['active_days'] ?? 1;
       } else {
         currentHp = data['hp'];
         maxHp = data['maxHp'];
@@ -860,6 +862,7 @@ class _MainScreenState extends State<MainScreen>
         initialUsername: nickname,
         initialGold: gold,
         initialCompletedTasks: tasks.where((t) => t.isDone).length,
+        initialActiveDays: activeDays,
         // 当个人中心修改了资料，通知主页刷新
         onProfileUpdate: (String? newName) {
           // 1. 如果有新名字，直接更新本地状态

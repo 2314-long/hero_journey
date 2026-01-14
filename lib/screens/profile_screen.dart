@@ -11,6 +11,7 @@ class ProfileScreen extends StatefulWidget {
   final String initialUsername;
   final int initialGold;
   final int initialCompletedTasks;
+  final int initialActiveDays;
   final Function(String? newName)? onProfileUpdate;
 
   const ProfileScreen({
@@ -19,6 +20,7 @@ class ProfileScreen extends StatefulWidget {
     required this.initialUsername,
     required this.initialGold,
     required this.initialCompletedTasks,
+    required this.initialActiveDays,
     this.onProfileUpdate,
   });
 
@@ -34,7 +36,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late String _username;
   late int _gold;
   late int _completedTasks;
-  int _activeDays = 1; // 这个数据暂时还没存，先模拟
+  late int _activeDays;
 
   bool _isLoading = false;
 
@@ -46,6 +48,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _username = widget.initialUsername;
     _gold = widget.initialGold;
     _completedTasks = widget.initialCompletedTasks;
+    _activeDays = widget.initialActiveDays;
 
     // 虽然已经有了数据，但还是可以在后台静默刷新一下最新数据
     _fetchRealData();
@@ -68,6 +71,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (stats != null) {
           _gold = stats['gold'] ?? _gold;
           _username = stats['nickname'] ?? _username;
+          _activeDays = stats['active_days'] ?? _activeDays;
         }
         if (tasks != null) {
           _completedTasks = tasks.where((t) => t.isDone == true).length;
