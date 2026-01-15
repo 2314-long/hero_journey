@@ -12,8 +12,8 @@ class BattleHeader extends StatefulWidget {
   final bool hasShield;
 
   // Boss 数据
-  final int currentXp;
-  final int maxXp;
+  final int currentXp; // 当前经验（相当于已对Boss造成的伤害总和）
+  final int maxXp; // 升级所需经验（相当于Boss总血量）
 
   // 头像 URL
   final String avatarUrl;
@@ -57,9 +57,15 @@ class BattleHeaderState extends State<BattleHeader>
   bool _isAttacking = false;
   bool _showChest = false;
 
+  // 🔥 [新增] 视觉上的 Boss 血量，用于实现即时扣血动画
+  late double _visualBossHp;
+
   @override
   void initState() {
     super.initState();
+    // 初始化视觉血量
+    _updateVisualHpFromProps();
+
     _shakeCtrl =
         AnimationController(
           duration: const Duration(milliseconds: 100),
@@ -67,8 +73,6 @@ class BattleHeaderState extends State<BattleHeader>
           lowerBound: 0.0,
           upperBound: 0.1,
         )..addListener(() {
-          // 这个 setState 是震动动画必须的，但可能会导致控制台打印一些 rebuild 信息
-          // 这是正常的，不必担心
           if (mounted) setState(() {});
         });
     _attackCtrl = AnimationController(
@@ -94,6 +98,26 @@ class BattleHeaderState extends State<BattleHeader>
     ).animate(CurvedAnimation(parent: _deathCtrl, curve: Curves.easeIn));
   }
 
+  // 辅助函数：根据父组件数据计算真实血量
+  void _updateVisualHpFromProps() {
+    double realHp = (widget.maxXp - widget.currentXp).toDouble();
+    if (realHp < 0) realHp = 0;
+    _visualBossHp = realHp;
+  }
+
+  // 🔥 [关键] 当父组件更新数据时（后端返回了，或者回滚了）
+  @override
+  void didUpdateWidget(BattleHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // 只有当父组件传来的 XP 发生变化时，才同步视觉血量
+    // 这样可以避免动画过程中被意外重置，同时保证最终数据一致性
+    if (widget.currentXp != oldWidget.currentXp ||
+        widget.maxXp != oldWidget.maxXp) {
+      _updateVisualHpFromProps();
+    }
+  }
+
   @override
   void dispose() {
     _shakeCtrl.dispose();
@@ -105,6 +129,10 @@ class BattleHeaderState extends State<BattleHeader>
 
   void die() {
     if (_showChest) return;
+    // 确保死亡时血条清空
+    setState(() {
+      _visualBossHp = 0;
+    });
     _deathCtrl.forward().then((_) {
       if (mounted) {
         setState(() => _showChest = true);
@@ -119,6 +147,7 @@ class BattleHeaderState extends State<BattleHeader>
       _damagePopups.clear();
       _isHurt = false;
       _isAttacking = false;
+      _updateVisualHpFromProps(); // 满血复活
     });
     _shakeCtrl.forward().then((_) => _shakeCtrl.reverse());
   }
@@ -126,7 +155,14 @@ class BattleHeaderState extends State<BattleHeader>
   void hit(int damage) {
     if (_isAttacking || _showChest) return;
     _hurtTimer?.cancel();
-    setState(() => _isHurt = true);
+
+    setState(() {
+      _isHurt = true;
+      // 🔥 [核心修改] 立即扣除视觉血量，不等待后端
+      _visualBossHp -= damage;
+      if (_visualBossHp < 0) _visualBossHp = 0;
+    });
+
     _shakeCtrl.forward().then((_) => _shakeCtrl.reverse());
 
     final key = UniqueKey();
@@ -163,6 +199,7 @@ class BattleHeaderState extends State<BattleHeader>
     });
   }
 
+  // 保持原有逻辑不变
   Widget _buildDragonWithColor(String imagePath) {
     int level = widget.level;
     Widget rawImage = Image.asset(
@@ -170,7 +207,6 @@ class BattleHeaderState extends State<BattleHeader>
       fit: BoxFit.contain,
       filterQuality: FilterQuality.none,
     );
-    // 简化的 Boss 颜色逻辑
     if (level < 10)
       return ColorFiltered(
         colorFilter: const ColorFilter.mode(Colors.green, BlendMode.modulate),
@@ -216,14 +252,14 @@ class BattleHeaderState extends State<BattleHeader>
   }
 
   @override
-  @override
   Widget build(BuildContext context) {
-    int monsterCurrentHp = _showChest ? 0 : (widget.maxXp - widget.currentXp);
-    if (monsterCurrentHp < 0) monsterCurrentHp = 0;
-    double bossHpPct = widget.maxXp == 0 ? 0 : monsterCurrentHp / widget.maxXp;
+    // 🔥 [修改] 使用视觉血量计算百分比
+    double bossHpPct = widget.maxXp == 0 ? 0 : _visualBossHp / widget.maxXp;
+
     double playerHpPct = widget.maxHp == 0
         ? 0
         : widget.currentHp / widget.maxHp;
+
     String currentImage = _isAttacking
         ? 'assets/images/boss_dragon_attack.png'
         : (_isHurt
@@ -284,7 +320,7 @@ class BattleHeaderState extends State<BattleHeader>
             // 3. 内容层
             Row(
               children: [
-                // 👈 左侧：玩家区域
+                // 👈 左侧：玩家区域 (保持不变)
                 Expanded(
                   child: GestureDetector(
                     onTap: widget.onAvatarTap,
@@ -297,7 +333,7 @@ class BattleHeaderState extends State<BattleHeader>
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          // 🔥 Row 1: 第一行修正 (移除 Flexible)
+                          // Row 1: 徽章
                           SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
                             child: Row(
@@ -309,18 +345,12 @@ class BattleHeaderState extends State<BattleHeader>
                                   Colors.blue,
                                 ),
                                 const SizedBox(width: 4),
-
-                                // ✅ [核心修复] 去掉了 Flexible，直接显示金币
-                                // 在 SingleChildScrollView 里不能用 Flexible
                                 _buildBadge(
                                   Icons.monetization_on,
                                   "${widget.gold}",
                                   Colors.amber,
                                 ),
-
                                 const SizedBox(width: 8),
-
-                                // 装备图标
                                 if (widget.hasSword)
                                   _buildSmallEquipBadge(
                                     Icons.colorize,
@@ -431,7 +461,7 @@ class BattleHeaderState extends State<BattleHeader>
                   ),
                 ),
 
-                // 👉 右侧：Boss 区域 (保持不变)
+                // 👉 右侧：Boss 区域
                 Expanded(
                   child: GestureDetector(
                     onTap: _showChest ? widget.onChestTap : () => hit(10),
@@ -464,7 +494,7 @@ class BattleHeaderState extends State<BattleHeader>
                                         MainAxisAlignment.spaceBetween,
                                     children: [
                                       Text(
-                                        "${monsterCurrentHp}",
+                                        "${_visualBossHp.toInt()}", // 🔥 使用视觉血量
                                         style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 10,
@@ -485,7 +515,7 @@ class BattleHeaderState extends State<BattleHeader>
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(4),
                                     child: LinearProgressIndicator(
-                                      value: bossHpPct,
+                                      value: bossHpPct, // 🔥 使用视觉血量百分比
                                       backgroundColor: Colors.white10,
                                       color: Colors.redAccent,
                                       minHeight: 8,
@@ -547,7 +577,6 @@ class BattleHeaderState extends State<BattleHeader>
     );
   }
 
-  // 徽章组件
   Widget _buildBadge(IconData icon, String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -573,21 +602,20 @@ class BattleHeaderState extends State<BattleHeader>
     );
   }
 
-  // ⚡ 新的小型装备图标
   Widget _buildSmallEquipBadge(IconData icon, Color color) {
     return Container(
-      margin: const EdgeInsets.only(left: 4), // 图标之间的间距
+      margin: const EdgeInsets.only(left: 4),
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: color.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(4), //稍微方一点
+        borderRadius: BorderRadius.circular(4),
       ),
-      child: Icon(icon, color: color, size: 10), // 小尺寸图标
+      child: Icon(icon, color: color, size: 10),
     );
   }
 }
 
-// 伤害飘字 (保持不变)
+// 🔥 [修改] 优化后的伤害飘字
 class DamageText extends StatefulWidget {
   final int value;
   final VoidCallback onDone;
@@ -607,23 +635,25 @@ class _DamageTextState extends State<DamageText>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      // 🔥 延长到 2000ms (2秒)，让玩家能看清
+      duration: const Duration(milliseconds: 2000),
       vsync: this,
     );
     _opacity = Tween<double>(begin: 1.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _ctrl,
-        curve: const Interval(0.7, 1.0, curve: Curves.easeIn),
+        // 🔥 动画播放到 80% 才开始消失，停留时间更久
+        curve: const Interval(0.8, 1.0, curve: Curves.easeIn),
       ),
     );
     _position = Tween<Offset>(
       begin: const Offset(0, 0),
-      end: const Offset(0, -60),
+      end: const Offset(0, -80), // 🔥 飘得更高一点
     ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
     _scale = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.5), weight: 20),
-      TweenSequenceItem(tween: Tween(begin: 1.5, end: 1.0), weight: 20),
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 60),
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.5), weight: 10), // 快速弹出
+      TweenSequenceItem(tween: Tween(begin: 1.5, end: 1.0), weight: 10), // 回弹
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 80), // 保持大小
     ]).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
 
     _ctrl.forward().then((_) => widget.onDone());

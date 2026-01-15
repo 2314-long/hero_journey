@@ -372,6 +372,8 @@ class _MainScreenState extends State<MainScreen>
 
   void _checkLevelUp() {
     AudioService().playSuccess();
+
+    // 弹窗提示
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -392,6 +394,7 @@ class _MainScreenState extends State<MainScreen>
           children: [
             const Icon(Icons.stars_rounded, color: Colors.amber, size: 60),
             const SizedBox(height: 16),
+            // 这里我们预判一下等级 +1 显示，给用户即时反馈
             Text(
               "恭喜提升到 Lv.${level + 1}",
               style: const TextStyle(
@@ -414,19 +417,23 @@ class _MainScreenState extends State<MainScreen>
               backgroundColor: Colors.amber,
               foregroundColor: Colors.black,
             ),
-            onPressed: () {
+            onPressed: () async {
+              // 🔥 变成 async
               Navigator.of(context).pop();
+
+              // 🔥🔥🔥 [核心修复] 在这里才真正拉取新数据 🔥🔥🔥
+              // 用户点确定了，这时候把画面变成满血的新等级才合理
+              await _loadData();
+
               setState(() {
-                level++;
-                currentXp = currentXp - maxXp;
-                if (currentXp < 0) currentXp = 0;
-                maxHp += 10;
-                currentHp = maxHp;
                 _controllerLeft.play();
                 _controllerRight.play();
                 AudioService().playLevelUp();
               });
+
               _saveData();
+
+              // 生成新 Boss
               _bossKey.currentState?.spawn();
             },
             child: const Text(
@@ -450,56 +457,61 @@ class _MainScreenState extends State<MainScreen>
       );
       return;
     }
-    if (task.deadline != null) {
-      if (DateTime.now().isAfter(DateTime.parse(task.deadline!)) &&
-          !task.isDone) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("🚫 任务已过期，无法操作")));
-        return;
-      }
+    if (task.deadline != null &&
+        DateTime.now().isAfter(DateTime.parse(task.deadline!)) &&
+        !task.isDone) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("🚫 任务已过期")));
+      return;
     }
 
-    // 2. 记录旧状态 (用于失败回滚)
+    // 2. 记录旧状态
     final bool oldDoneState = task.isDone;
+    // final int oldLevel = level; // 不需要这个了，我们直接对比后端数据
 
-    // 3. 乐观更新 UI (先打钩，给用户即时反馈)
+    // 3. 乐观更新 UI
     setState(() {
       task.isDone = true;
       if (task.id != null) NotificationService().cancelNotification(task.id!);
-
-      // 🔥 [注意] 这里不要自己算经验了 (currentXp += reward)，
-      // 因为后端会算好，我们等会儿直接拉取最新的。
-      // 这里的乐观更新只更新 "任务状态"，不更新 "属性"。
     });
 
-    // 4. 播放音效和动画 (提升体验)
+    // 4. 播放特效
     AudioService().playSuccess();
-    _bossKey.currentState?.hit(100); // 假装打了一下 Boss
+    _bossKey.currentState?.hit(100);
 
-    // 5. 🔥 [核心] 调用后端 API
+    // 5. 调用后端
     final success = await ApiService().updateTask(task);
 
     if (!success) {
-      // 失败回滚
       if (mounted) {
-        setState(() {
-          task.isDone = oldDoneState; // 变回去
-        });
+        setState(() => task.isDone = oldDoneState);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text("⚠️ 网络异常，同步失败")));
+        ).showSnackBar(const SnackBar(content: Text("⚠️ 同步失败")));
       }
     } else {
-      // ✅ [成功] 此时后端已经加了钱和经验
-      // 我们只需要重新拉取一次数据，界面上的金币就会自动涨起来！
-      await _loadData();
+      // 🔥🔥🔥 [核心修复] 避免满血复活 BUG 🔥🔥🔥
 
-      // 检查是否升级 (通过对比 _loadData 前后的 level，或者直接看后端返回的数据)
-      // 由于 _loadData 会更新 level，我们可以简单判断一下逻辑，或者依赖后端的升级弹窗逻辑
-      // 简单起见，只要数据刷新了，用户看到金币变多就行。
+      // 1. 我们不直接调用 _loadData()，因为那样会把界面直接刷成满血
+      // 我们先“偷偷”从后端拿一下最新的属性，看看是不是升级了
+      final newStats = await ApiService().fetchStats();
+      final int newLevel = newStats?['level'] ?? level;
 
-      _saveData(); // 仅保存到本地缓存
+      if (newLevel > level) {
+        // 🎉 发现升级了！
+        // 2. 强制在 UI 上把 Boss 杀死 (尽管后端已经满血了，前端要演戏)
+
+        // 3. 变成宝箱
+        _bossKey.currentState?.die();
+
+        // 4. 我们暂停在这里，不调用 _saveData 或 _loadData
+        // 等用户点了宝箱，触发 _checkLevelUp 时，我们再去更新数据
+      } else {
+        // 没升级，一切照旧
+        await _loadData(); // 拉取最新金币、经验
+        _saveData(); // 本地缓存
+      }
     }
   }
 
@@ -641,26 +653,39 @@ class _MainScreenState extends State<MainScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("调试"),
-        content: const Text("重置为 Lv.1 状态？"),
+        content: const Text("⚠️ 警告：这将强制覆盖云端存档\n重置为 Lv.1 状态？"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text("取消"),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              // 🔥 变成 async
               Navigator.pop(context);
+
+              // 1. 先重置本地显示
               setState(() {
                 level = 1;
                 currentHp = 100;
                 maxHp = 100;
                 currentXp = 0;
+                gold = 0; // 建议金币也归零
                 _isGameOverProcessing = false;
                 _startTimer();
               });
-              _saveData();
+
+              // 2. 🔥 [核心修复] 强制告诉后端：把这个人的档给我洗了！
+              // 这里我们需要显式调用 syncStats，只有在重置时才允许这么做
+              await ApiService().syncStats(1, 0, 0, 100, 100);
+
+              _saveData(); // 存本地
+
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text("♻️ 存档已重置")));
             },
-            child: const Text("重置"),
+            child: const Text("重置", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
