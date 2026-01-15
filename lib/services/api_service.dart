@@ -452,4 +452,20 @@ class ApiService {
       return false;
     }
   }
+
+  // 获取成长历史
+  Future<List<dynamic>> fetchGrowthHistory() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/stats/history'),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      }
+    } catch (e) {
+      print("获取历史失败: $e");
+    }
+    return [];
+  }
 }

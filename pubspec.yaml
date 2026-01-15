@@ -43,6 +43,7 @@ dependencies:
   flutter_launcher_icons: ^0.13.1
   http: ^1.6.0
   image_picker: ^1.0.7
+  fl_chart: ^0.69.0
   flutter_localizations: # 👈 新增这个
     sdk: flutter
   intl: ^0.20.2

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import 'login_screen.dart';
+import 'stats_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   // 🔥 接收从主页传来的"初始数据" (解决闪烁问题的关键)
@@ -834,6 +835,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 12),
         _buildMenuItem(Icons.help_outline, "帮助与反馈", Colors.blue, () {}),
+        const SizedBox(height: 12),
+        _buildMenuItem(Icons.bar_chart, "数据周报", Colors.purple, () {
+          // 🔥 [修改] 跳转到新页面
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const StatsScreen()),
+          );
+        }),
         const SizedBox(height: 12),
         _buildMenuItem(
           Icons.logout,
