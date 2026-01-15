@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'dart:math'; // 用于计算最大值
+import '../widgets/monthly_calendar_card.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -82,6 +83,10 @@ class _StatsScreenState extends State<StatsScreen> {
 
                   // 4. 生产力分析 (柱状图)
                   _buildBarChartCard(),
+                  const SizedBox(height: 40),
+
+                  // 5. 🔥 [新增] 英雄日记 (月度表格)
+                  MonthlyCalendarCard(historyLogs: _history),
                   const SizedBox(height: 40),
                 ],
               ),
