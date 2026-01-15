@@ -92,16 +92,33 @@ class _StatsScreenState extends State<StatsScreen> {
   // 📌 顶部概览小卡片
   Widget _buildSummaryCards() {
     int totalTasks = 0;
-    int goldGrowth = 0;
+    int dailyGoldChange = 0;
+
     if (_history.isNotEmpty) {
+      // 1. 计算本周总任务
       totalTasks = _history.fold(
         0,
         (sum, item) => sum + (item['task_count'] as int),
       );
-      // 简单计算：今天 - 第一天
-      goldGrowth =
-          (_history.last['gold'] as int) - (_history.first['gold'] as int);
+
+      // 2. 🔥 [修改] 计算较昨日收益
+      final todayGold = _history.last['gold'] as int;
+
+      if (_history.length >= 2) {
+        // 情况 A: 有两天及以上数据 -> 今天 - 昨天
+        final yesterdayGold = _history[_history.length - 2]['gold'] as int;
+        dailyGoldChange = todayGold - yesterdayGold;
+      } else {
+        // 情况 B: 只有今天一天数据 -> 昨天默认为 0
+        // 收益 = 今天金币 - 0 = 今天金币
+        dailyGoldChange = todayGold;
+      }
     }
+
+    // 格式化显示的字符串，如果是正数加个 + 号
+    String goldDisplay = dailyGoldChange >= 0
+        ? "+$dailyGoldChange"
+        : "$dailyGoldChange";
 
     return Row(
       children: [
@@ -114,10 +131,11 @@ class _StatsScreenState extends State<StatsScreen> {
           ),
         ),
         const SizedBox(width: 12),
+        // 🔥 [修改] 标题改为 "较昨日收益"
         Expanded(
           child: _buildStatCard(
-            "近期收益",
-            "+$goldGrowth",
+            "较昨日收益",
+            goldDisplay,
             Icons.trending_up,
             Colors.orange,
           ),
@@ -418,7 +436,7 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  // 📊 每日任务完成 (Bar Chart)
+  // 📊 每日任务完成 (Bar Chart) - 数字常驻显示版
   Widget _buildBarChartCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -433,25 +451,34 @@ class _StatsScreenState extends State<StatsScreen> {
             "每日战斗力 (完成任务)",
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 40), // 🔥 增加顶部间距，给数字腾出位置
           AspectRatio(
             aspectRatio: 1.7,
             child: BarChart(
               BarChartData(
+                // 1. 🔥 关闭触摸交互，改用常驻显示
                 barTouchData: BarTouchData(
+                  enabled: false, // 禁止触摸变色，因为我们要一直显示
                   touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (group) => Colors.blueAccent,
+                    getTooltipColor: (group) => Colors.transparent, // 🔥 背景透明
+                    tooltipPadding: EdgeInsets.zero,
+                    tooltipMargin: 4, // 数字距离柱子的距离
                     getTooltipItem: (group, groupIndex, rod, rodIndex) {
                       return BarTooltipItem(
                         rod.toY.toInt().toString(),
-                        const TextStyle(
-                          color: Colors.white,
+                        TextStyle(
+                          color: rod.toY >= 3
+                              ? Colors.blue
+                              : Colors.blue.shade300, // 字体颜色
                           fontWeight: FontWeight.bold,
+                          fontSize: 12,
                         ),
                       );
                     },
                   ),
                 ),
+
+                // ... 坐标轴配置保持不变 ...
                 titlesData: FlTitlesData(
                   rightTitles: const AxisTitles(
                     sideTitles: SideTitles(showTitles: false),
@@ -461,7 +488,7 @@ class _StatsScreenState extends State<StatsScreen> {
                   ),
                   leftTitles: const AxisTitles(
                     sideTitles: SideTitles(showTitles: false),
-                  ), // 柱状图不需要Y轴刻度，看高度就行
+                  ),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
@@ -470,7 +497,6 @@ class _StatsScreenState extends State<StatsScreen> {
                         if (index >= 0 && index < _history.length) {
                           String date = _history[index]['log_date'];
                           List<String> parts = date.split('-');
-                          // 柱状图只显示 "日" (25号)
                           if (parts.length >= 3)
                             return Padding(
                               padding: const EdgeInsets.only(top: 8),
@@ -490,18 +516,20 @@ class _StatsScreenState extends State<StatsScreen> {
                 ),
                 borderData: FlBorderData(show: false),
                 gridData: const FlGridData(show: false),
+
+                // 2. 🔥 数据组配置
                 barGroups: _history.asMap().entries.map((entry) {
                   int index = entry.key;
-                  int tasks = entry.value['task_count'] ?? 0; // 防止空值
+                  int tasks = entry.value['task_count'] ?? 0;
 
                   return BarChartGroupData(
                     x: index,
+                    // 🔥 [核心] 强制显示 Tooltip (也就是我们的数字)
+                    showingTooltipIndicators: [0],
                     barRods: [
                       BarChartRodData(
                         toY: tasks.toDouble(),
-                        color: tasks >= 3
-                            ? Colors.blue
-                            : Colors.blue.shade200, // 任务>3 高亮显示
+                        color: tasks >= 3 ? Colors.blue : Colors.blue.shade200,
                         width: 16,
                         borderRadius: const BorderRadius.only(
                           topLeft: Radius.circular(6),
@@ -509,7 +537,7 @@ class _StatsScreenState extends State<StatsScreen> {
                         ),
                         backDrawRodData: BackgroundBarChartRodData(
                           show: true,
-                          toY: 10, // 假设每日最大任务是10作为背景参照
+                          toY: 10,
                           color: Colors.grey.shade100,
                         ),
                       ),
